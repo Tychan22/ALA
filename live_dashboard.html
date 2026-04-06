@@ -1,0 +1,2497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg-primary: #06080f;
+      --bg-card: rgba(14, 18, 30, 0.75);
+      --bg-card-hover: rgba(20, 26, 42, 0.85);
+      --border: rgba(56, 189, 248, 0.08);
+      --border-active: rgba(56, 189, 248, 0.2);
+      --accent: #38bdf8;
+      --accent-dim: rgba(56, 189, 248, 0.15);
+      --accent-glow: rgba(56, 189, 248, 0.06);
+      --green: #34d399;
+      --green-dim: rgba(52, 211, 153, 0.12);
+      --red: #f87171;
+      --red-dim: rgba(248, 113, 113, 0.12);
+      --amber: #fbbf24;
+      --amber-dim: rgba(251, 191, 36, 0.12);
+      --purple: #c084fc;
+      --purple-dim: rgba(192, 132, 252, 0.12);
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-dim: #475569;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: var(--bg-primary); color: var(--text-primary); font-family: 'Inter', system-ui, sans-serif; overflow-x: hidden; min-height: 100vh; }
+    #matrix-canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; opacity: 0.45; }
+    .app { position: relative; z-index: 1; min-height: 100vh; }
+
+    /* HEADER */
+    .header {
+      padding: 14px 32px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(20px);
+      background: rgba(6, 8, 15, 0.88);
+      position: sticky; top: 0; z-index: 10;
+    }
+    .header-left { display: flex; align-items: center; gap: 14px; }
+    .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.5px; color: #fff; }
+    .logo span { color: var(--accent); }
+    .ticker-switcher { display: flex; gap: 4px; align-items: center; }
+    .ticker-btn {
+      font-size: 12px; font-weight: 600; padding: 5px 14px;
+      border-radius: 100px; cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent; color: var(--text-secondary);
+      transition: all 0.18s; letter-spacing: 0.3px;
+    }
+    .ticker-btn:hover { color: var(--text-primary); border-color: var(--border-active); background: var(--accent-glow); }
+    .ticker-btn.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(56,189,248,0.3); }
+    .ticker-btn.add-ticker { color: var(--text-dim); border-style: dashed; }
+    .ticker-btn.add-ticker:hover { color: var(--accent); border-color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .instrument-badge {
+      font-size: 11px; font-weight: 500; padding: 3px 10px;
+      border-radius: 100px; background: var(--purple-dim);
+      color: var(--purple); border: 1px solid rgba(192,132,252,0.15);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .system-status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); box-shadow: none; transition: background 0.4s, box-shadow 0.4s; }
+    .status-dot.tv-on  { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2.5s ease-in-out infinite; }
+    .status-dot.tv-off { background: var(--red);   box-shadow: 0 0 6px var(--red);   animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .last-updated { font-size: 11px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+
+    /* TABS */
+    .tabs { padding: 0 32px; display: flex; gap: 4px; border-bottom: 1px solid var(--border); background: rgba(6,8,15,0.5); }
+    .tab {
+      font-size: 13px; font-weight: 500; padding: 10px 20px;
+      border-radius: 8px 8px 0 0; cursor: pointer;
+      color: var(--text-secondary); transition: all 0.2s;
+      border: 1px solid transparent; border-bottom: none; background: transparent;
+    }
+    .tab:hover { color: var(--text-primary); background: var(--accent-glow); }
+    .tab.active { color: var(--accent); background: var(--accent-dim); border-color: var(--border-active); }
+
+    /* CONTENT */
+    .content { padding: 24px 32px; }
+
+    /* EMPTY TICKER STATE */
+    .empty-ticker {
+      display: none; text-align: center; padding: 80px 40px;
+      color: var(--text-dim);
+    }
+    .empty-ticker h2 { font-size: 20px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+    .empty-ticker p { font-size: 14px; line-height: 1.7; max-width: 400px; margin: 0 auto; }
+
+    /* STAT CARDS */
+    .stats-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 20px; }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 16px;
+      backdrop-filter: blur(10px); transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: var(--border-active); }
+    .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 7px; }
+    .stat-value { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: #fff; }
+    .stat-value.green { color: var(--green); }
+    .stat-value.red { color: var(--red); }
+    .stat-value.amber { color: var(--amber); }
+    .stat-value.accent { color: var(--accent); }
+    .stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
+    /* CHARTS ROW */
+    .charts-row { display: grid; grid-template-columns: 210px 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; backdrop-filter: blur(10px);
+      overflow: hidden; transition: border-color 0.2s;
+    }
+    .card:hover { border-color: var(--border-active); }
+    .card-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .card-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); }
+    .card-badge {
+      font-size: 10px; font-weight: 600; padding: 2px 8px;
+      border-radius: 100px; font-family: 'JetBrains Mono', monospace;
+    }
+    .card-badge.green { background: var(--green-dim); color: var(--green); }
+    .card-badge.amber { background: var(--amber-dim); color: var(--amber); }
+    .card-badge.accent { background: var(--accent-dim); color: var(--accent); }
+    .card-badge.red { background: var(--red-dim); color: var(--red); }
+    .card-body { padding: 14px 16px; }
+    .chart-wrap { position: relative; }
+
+    /* STRATEGY CARDS */
+    .strategy-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+    .strat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; overflow: hidden;
+      backdrop-filter: blur(10px); transition: all 0.2s;
+      cursor: pointer; user-select: none;
+    }
+    .strat-card:hover { border-color: var(--border-active); }
+    .strat-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 24px rgba(56,189,248,0.1);
+      background: rgba(56,189,248,0.04);
+    }
+    .strat-header { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .strat-name { font-size: 14px; font-weight: 600; color: #fff; }
+    .strat-body { padding: 14px 16px; }
+    .strat-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .strat-stat { text-align: center; }
+    .strat-stat-val { font-size: 19px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .strat-stat-lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; }
+    .mini-bar-wrap { margin-top: 8px; }
+    .mini-bar-label { font-size: 10px; color: var(--text-dim); margin-bottom: 3px; display: flex; justify-content: space-between; }
+    .mini-bar-track { height: 4px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden; }
+    .mini-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .strat-last { font-size: 11px; color: var(--text-dim); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; }
+    .no-strats { text-align: center; padding: 32px; color: var(--text-dim); font-size: 13px; }
+
+    /* TABLE */
+    .table-card { margin-bottom: 20px; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-dim); font-weight: 600;
+      padding: 10px 12px; text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td { padding: 10px 12px; font-size: 12px; border-bottom: 1px solid rgba(56,189,248,0.04); vertical-align: middle; }
+    tbody tr:hover td { background: var(--accent-glow); }
+    tbody tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .pill.win    { background: var(--green-dim); color: var(--green); }
+    .pill.loss   { background: var(--red-dim); color: var(--red); }
+    .pill.partial{ background: var(--amber-dim); color: var(--amber); }
+    .pill.no_entry { background: rgba(71,85,105,0.2); color: var(--text-dim); }
+    .pill.live   { background: var(--accent-dim); color: var(--accent); }
+    .pill.backtest { background: var(--purple-dim); color: var(--purple); }
+    .pill.long   { background: var(--green-dim); color: var(--green); }
+    .pill.short  { background: var(--red-dim); color: var(--red); }
+    .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .pnl-pos { color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; }
+    .pnl-neg { color: var(--red); font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; }
+    .pnl-zero { color: var(--text-dim); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+    .empty-state { text-align: center; padding: 36px; color: var(--text-dim); font-size: 13px; }
+
+    /* RULES */
+    .insights-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .insight-item { background: rgba(255,255,255,0.02); border-radius: 8px; padding: 12px 14px; border: 1px solid var(--border); }
+    .insight-icon { font-size: 15px; margin-bottom: 5px; }
+    .insight-title { font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 3px; }
+    .insight-text { font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* TRADE MODAL */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85); z-index: 100;
+      align-items: center; justify-content: center;
+      backdrop-filter: blur(6px);
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: rgba(14,18,30,0.98);
+      border: 1px solid var(--border-active);
+      border-radius: 16px; width: 90%; max-width: 960px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 0 60px rgba(56,189,248,0.08);
+    }
+    .modal-header {
+      padding: 16px 22px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; background: rgba(14,18,30,0.98); z-index: 1;
+    }
+    .modal-title { font-size: 15px; font-weight: 600; color: #fff; }
+    .modal-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+    .modal-close {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      color: var(--text-secondary); font-size: 16px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; flex-shrink: 0;
+    }
+    .modal-close:hover { background: var(--red-dim); color: var(--red); border-color: rgba(248,113,113,0.3); }
+    .modal-body { padding: 20px 22px; }
+    .modal-screenshots {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 14px; margin-bottom: 18px;
+    }
+    .modal-screenshots .shot { }
+    .modal-screenshots img {
+      width: 100%; border-radius: 10px;
+      border: 1px solid var(--border); cursor: zoom-in;
+      transition: border-color 0.2s;
+    }
+    .modal-screenshots img:hover { border-color: var(--border-active); }
+    .shot-label {
+      font-size: 11px; color: var(--text-dim); text-align: center;
+      margin-top: 6px; font-family: 'JetBrains Mono', monospace;
+    }
+    .modal-no-shots {
+      text-align: center; padding: 40px;
+      color: var(--text-dim); font-size: 13px;
+      border: 1px dashed var(--border); border-radius: 10px;
+      margin-bottom: 18px;
+    }
+    .modal-levels {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+    }
+    .modal-level {
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 12px; font-size: 12px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .modal-level span { color: var(--accent); font-weight: 600; margin-left: 4px; }
+    .modal-notes {
+      font-size: 13px; color: var(--text-secondary); line-height: 1.75;
+      border-left: 3px solid var(--accent); padding-left: 14px;
+    }
+    /* Lightbox for fullscreen image */
+    .lightbox {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.96); z-index: 200;
+      align-items: center; justify-content: center; cursor: zoom-out;
+    }
+    .lightbox.active { display: flex; }
+    .lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+    .lightbox-close { position: fixed; top: 16px; right: 22px; font-size: 28px; color: #fff; cursor: pointer; opacity: 0.7; }
+    .lightbox-close:hover { opacity: 1; }
+    /* double-click hint on rows */
+    tbody tr { cursor: pointer; }
+
+    /* SESSION DETAIL MODAL */
+    .sd-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .sd-tab {
+      padding: 9px 20px; font-size: 12px; font-weight: 600; cursor: pointer;
+      color: var(--text-dim); border-bottom: 2px solid transparent; margin-bottom: -1px;
+      transition: all 0.15s; letter-spacing: 0.3px;
+    }
+    .sd-tab:hover { color: var(--text-primary); }
+    .sd-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .sd-page { display: none; }
+    .sd-page.active { display: block; }
+    .sd-insight-item {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .sd-insight-item:last-child { border-bottom: none; }
+    .sd-insight-num {
+      width: 22px; height: 22px; border-radius: 50%; background: var(--accent-dim);
+      color: var(--accent); font-size: 11px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+    }
+    .sd-insight-text { font-size: 13px; color: var(--text-secondary); line-height: 1.65; }
+    .sd-section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+      color: var(--text-dim); margin: 18px 0 10px;
+    }
+    .sd-section-label:first-child { margin-top: 0; }
+    .sd-tweak-item {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px; margin-bottom: 8px;
+    }
+    .sd-tweak-rule { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+    .sd-tweak-suggestion { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+    .sd-tweak-meta { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .sd-violation-item {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .sd-violation-item:last-child { border-bottom: none; }
+    .sd-violation-left { flex: 1; }
+    .sd-violation-trade { font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 3px; }
+    .sd-violation-rule { font-size: 12px; color: var(--red); margin-bottom: 3px; }
+    .sd-violation-note { font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+    .sd-violation-pnl { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
+
+    /* ERROR */
+    .error-banner {
+      background: var(--red-dim); border: 1px solid rgba(248,113,113,0.2);
+      border-radius: 10px; padding: 12px 18px; margin-bottom: 18px;
+      font-size: 13px; color: var(--red); display: none;
+    }
+
+    @media (max-width: 1200px) {
+      .stats-row { grid-template-columns: repeat(3, 1fr); }
+      .charts-row { grid-template-columns: 1fr 1fr; }
+      .strategy-row { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 768px) {
+      .content { padding: 14px; }
+      .header { padding: 12px 16px; }
+      .stats-row { grid-template-columns: 1fr 1fr; }
+      .charts-row, .strategy-row { grid-template-columns: 1fr; }
+    }
+
+    /* ── LEARNING TAB ──────────────────────────────────────────────────── */
+
+    /* Pipeline */
+    .pipeline-row {
+      display: flex; align-items: center;
+      margin-bottom: 20px; overflow-x: auto; padding: 4px 0;
+    }
+    .pipeline-node {
+      flex-shrink: 0; min-width: 160px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px 18px; text-align: center;
+      backdrop-filter: blur(10px); transition: border-color 0.2s;
+    }
+    .pipeline-node:hover { border-color: var(--border-active); }
+    .pipeline-node.pn-signal   { border-color: rgba(56,189,248,0.25); }
+    .pipeline-node.pn-gold     { border-color: rgba(251,191,36,0.25); }
+    .pipeline-node.pn-monitor  { border-color: rgba(52,211,153,0.25); }
+    .pipeline-node.pn-learning { border-color: rgba(192,132,252,0.25); }
+    .pipeline-node.pn-output   { border-color: rgba(148,163,184,0.25); }
+
+    @keyframes pulse-signal   { 0%,100%{box-shadow:0 0 0 0 rgba(56,189,248,0.5),0 0 12px rgba(56,189,248,0.2)}  50%{box-shadow:0 0 0 6px rgba(56,189,248,0),0 0 22px rgba(56,189,248,0.4)} }
+    @keyframes pulse-gold     { 0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0.5),0 0 12px rgba(251,191,36,0.2)}  50%{box-shadow:0 0 0 6px rgba(251,191,36,0),0 0 22px rgba(251,191,36,0.4)} }
+    @keyframes pulse-monitor  { 0%,100%{box-shadow:0 0 0 0 rgba(52,211,153,0.5),0 0 12px rgba(52,211,153,0.2)}  50%{box-shadow:0 0 0 6px rgba(52,211,153,0),0 0 22px rgba(52,211,153,0.4)} }
+    @keyframes pulse-learning { 0%,100%{box-shadow:0 0 0 0 rgba(192,132,252,0.5),0 0 12px rgba(192,132,252,0.2)} 50%{box-shadow:0 0 0 6px rgba(192,132,252,0),0 0 22px rgba(192,132,252,0.4)} }
+    @keyframes pulse-output   { 0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0.5),0 0 12px rgba(251,191,36,0.2)}  50%{box-shadow:0 0 0 6px rgba(251,191,36,0),0 0 22px rgba(251,191,36,0.4)} }
+
+    .pipeline-node.pn-signal.agent-active   { border-color: rgba(56,189,248,0.9)  !important; animation: pulse-signal   1.8s ease-in-out infinite; }
+    .pipeline-node.pn-gold.agent-active     { border-color: rgba(251,191,36,0.9)  !important; animation: pulse-gold     1.8s ease-in-out infinite; }
+    .pipeline-node.pn-monitor.agent-active  { border-color: rgba(52,211,153,0.9)  !important; animation: pulse-monitor  1.8s ease-in-out infinite; }
+    .pipeline-node.pn-learning.agent-active { border-color: rgba(192,132,252,0.9) !important; animation: pulse-learning 1.8s ease-in-out infinite; }
+    .pipeline-node.pn-output.agent-active   { border-color: rgba(251,191,36,0.9)  !important; animation: pulse-output   1.8s ease-in-out infinite; }
+    .pipeline-node.agent-disabled           { opacity: 0.4; filter: grayscale(0.6); }
+    .pipeline-row.pipeline-shutdown .pipeline-node:not(:first-child) { opacity: 0.2; filter: grayscale(1); pointer-events: none; }
+    .pipeline-row.pipeline-shutdown .pipeline-connector               { opacity: 0.15; }
+    .pipeline-row.pipeline-shutdown .pipeline-dot                     { animation: none !important; background: var(--text-dim) !important; }
+    .pipeline-row.pipeline-shutdown .pipeline-line                    { background: rgba(148,163,184,0.1) !important; }
+    .pipeline-row.pipeline-shutdown .pipeline-connector-label         { color: var(--text-dim); }
+    .agent-toggle { margin-top: 8px; font-size: 9.5px; font-family: 'JetBrains Mono', monospace; cursor: pointer; padding: 3px 8px; border-radius: 20px; display: inline-block; transition: all 0.2s; user-select: none; }
+    .agent-toggle.enabled  { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
+    .agent-toggle.disabled { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+    .agent-toggle:hover    { filter: brightness(1.3); }
+    .pipeline-node-icon { font-size: 22px; margin-bottom: 7px; }
+    .pipeline-node-name { font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 4px; letter-spacing: -0.2px; }
+    .pipeline-node-meta { font-size: 9.5px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; line-height: 1.6; }
+    .pipeline-node-tag {
+      display: inline-block; margin-top: 9px;
+      font-size: 9px; font-weight: 700; padding: 2px 9px; border-radius: 100px;
+      text-transform: uppercase; letter-spacing: 0.8px;
+    }
+    .pn-signal   .pipeline-node-tag { background: var(--accent-dim);  color: var(--accent);  }
+    .pn-monitor  .pipeline-node-tag { background: var(--green-dim);   color: var(--green);   }
+    .pn-learning .pipeline-node-tag { background: var(--purple-dim);  color: var(--purple);  }
+    .pn-output   .pipeline-node-tag { background: var(--amber-dim);   color: var(--amber);   }
+    .pipeline-connector {
+      flex: 1; min-width: 48px; display: flex; flex-direction: column;
+      align-items: center; gap: 5px; padding: 0 6px;
+    }
+    .pipeline-line {
+      width: 100%; height: 2px; background: rgba(56,189,248,0.1);
+      border-radius: 2px; position: relative; overflow: hidden;
+    }
+    @keyframes flowdot { 0%{left:-30%} 100%{left:120%} }
+    .pipeline-dot {
+      position: absolute; width: 30%; height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(56,189,248,0.65), transparent);
+      animation: flowdot 1.8s ease-in-out infinite;
+    }
+    .pipeline-connector-label { font-size: 9px; color: var(--text-dim); white-space: nowrap; }
+
+    /* Learning stats row */
+    .learn-stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 20px; }
+
+    /* Breakdown */
+    .breakdown-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+    .breakdown-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 0; border-bottom: 1px solid var(--border);
+    }
+    .breakdown-item:last-child { border-bottom: none; }
+    .breakdown-label { font-size: 12px; color: var(--text-secondary); flex: 1; }
+    .breakdown-wr { font-size: 13px; font-weight: 700; font-family: 'JetBrains Mono', monospace; min-width: 44px; text-align: right; margin-left: 8px; }
+    .breakdown-n  { font-size: 10px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; min-width: 22px; text-align: right; margin-left: 5px; }
+    .breakdown-bar-wrap { width: 55px; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; margin-left: 8px; }
+    .breakdown-bar { height: 100%; border-radius: 2px; transition: width 0.6s; }
+    .nsuff { font-size: 11px; color: var(--text-dim); font-style: italic; padding: 8px 0; }
+
+    /* Two-column layout */
+    .learn-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+
+    /* Insight items */
+    .learn-insight-item {
+      display: flex; gap: 10px; padding: 10px 0;
+      border-bottom: 1px solid rgba(56,189,248,0.04);
+    }
+    .learn-insight-item:last-child { border-bottom: none; }
+    .learn-insight-num {
+      flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+      background: var(--accent-dim); color: var(--accent);
+      font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center;
+    }
+    .learn-insight-text { font-size: 12px; color: var(--text-secondary); line-height: 1.65; }
+
+    /* Violations */
+    .violation-item {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 11px 0; border-bottom: 1px solid rgba(56,189,248,0.04);
+    }
+    .violation-item:last-child { border-bottom: none; }
+    .violation-pnl { flex-shrink: 0; font-size: 12px; font-weight: 700; font-family: 'JetBrains Mono', monospace; min-width: 60px; text-align: right; padding-top: 1px; }
+    .violation-body { flex: 1; }
+    .violation-rule { font-size: 11px; font-weight: 600; color: var(--amber); margin-bottom: 3px; }
+    .violation-note { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+    .violation-meta { font-size: 10px; color: var(--text-dim); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+
+    /* Rule tweaks */
+    .tweak-item {
+      padding: 12px 0; border-bottom: 1px solid rgba(56,189,248,0.04);
+    }
+    .tweak-item:last-child { border-bottom: none; }
+    .tweak-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .tweak-confidence { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 100px; text-transform: uppercase; letter-spacing: 0.8px; }
+    .tweak-confidence.low    { background: rgba(71,85,105,0.3); color: var(--text-secondary); }
+    .tweak-confidence.medium { background: var(--amber-dim); color: var(--amber); }
+    .tweak-confidence.high   { background: var(--green-dim); color: var(--green); }
+    .tweak-n { font-size: 10px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+    .tweak-current { font-size: 10px; color: var(--text-dim); font-style: italic; margin-bottom: 5px; line-height: 1.5; }
+    .tweak-suggestion { font-size: 12px; color: var(--text-primary); line-height: 1.65; }
+    .tweak-basis { font-size: 10px; color: var(--accent); margin-top: 5px; line-height: 1.5; }
+
+    /* Session history table */
+    .session-table td { padding: 9px 12px; font-size: 12px; }
+
+    /* No learning data */
+    .no-learning { text-align: center; padding: 60px 40px; color: var(--text-dim); }
+    .no-learning h3 { font-size: 16px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+    .no-learning code { font-size: 13px; color: var(--accent); font-family: 'JetBrains Mono', monospace; background: var(--accent-dim); padding: 3px 8px; border-radius: 5px; }
+
+    /* ── STRATEGY TAB ─────────────────────────────────────────────────── */
+    .strat-editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    .strat-editor-full { margin-bottom: 20px; }
+    .strat-entry-grid  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 20px; }
+
+    /* Form inputs */
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 5px; display: block; }
+    .form-input {
+      width: 100%; padding: 8px 12px; font-size: 13px;
+      background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      transition: border-color 0.15s;
+      -webkit-appearance: none;
+    }
+    .form-input:focus { outline: none; border-color: var(--border-active); background: rgba(56,189,248,0.03); }
+    .form-input[type="number"] { width: 100%; }
+    .form-input[type="color"] {
+      padding: 3px 6px; height: 34px; cursor: pointer; width: 100%;
+    }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+    /* Toggle switch */
+    .toggle-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .toggle-label { font-size: 12px; color: var(--text-secondary); }
+    .toggle {
+      position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .toggle-track {
+      position: absolute; inset: 0; border-radius: 20px;
+      background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+      transition: all 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+    .toggle-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: #fff; transition: transform 0.2s;
+      pointer-events: none;
+    }
+    .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+    /* Save button */
+    .save-btn {
+      padding: 8px 20px; font-size: 12px; font-weight: 600;
+      border-radius: 8px; cursor: pointer;
+      background: var(--accent-dim); color: var(--accent);
+      border: 1px solid rgba(56,189,248,0.3);
+      letter-spacing: 0.3px; transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+    }
+    .save-btn:hover { background: rgba(56,189,248,0.22); }
+    .save-btn:active { transform: scale(0.97); }
+    .btn-row { display: flex; justify-content: flex-end; margin-top: 6px; gap: 8px; }
+
+    /* Danger/delete button */
+    .del-btn {
+      padding: 4px 10px; font-size: 11px; font-weight: 600;
+      border-radius: 6px; cursor: pointer;
+      background: var(--red-dim); color: var(--red);
+      border: 1px solid rgba(248,113,113,0.2);
+      transition: all 0.15s; font-family: 'Inter', sans-serif;
+    }
+    .del-btn:hover { background: rgba(248,113,113,0.2); }
+
+    /* Rule card editor */
+    .rule-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .rule-item:last-child { border-bottom: none; }
+    .rule-icon-input { width: 42px; text-align: center; font-size: 16px; }
+    .rule-text-wrap { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+    .rule-title-input { font-size: 12px; font-weight: 600; }
+    .rule-desc-input  { font-size: 11px; resize: vertical; min-height: 44px; }
+
+    /* Add strategy form */
+    .add-strat-form {
+      background: rgba(56,189,248,0.02); border: 1px dashed var(--border);
+      border-radius: 12px; padding: 18px; margin-top: 14px;
+    }
+    .add-strat-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.8px; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 500;
+      z-index: 300; opacity: 0; transform: translateY(8px);
+      transition: all 0.25s; pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .toast.success { background: rgba(52,211,153,0.15); color: var(--green); border: 1px solid rgba(52,211,153,0.3); }
+    .toast.error   { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+
+    /* No-API banner */
+    .no-api-banner {
+      background: var(--amber-dim); border: 1px solid rgba(251,191,36,0.2);
+      border-radius: 10px; padding: 12px 18px; margin-bottom: 18px;
+      font-size: 12px; color: var(--amber);
+    }
+    .no-api-banner code { background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; }
+
+    @media (max-width: 1200px) {
+      .strat-editor-grid { grid-template-columns: 1fr; }
+      .strat-entry-grid  { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 768px) {
+      .strat-entry-grid  { grid-template-columns: 1fr; }
+      .form-row, .form-row-3 { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 1200px) {
+      .learn-stats-row   { grid-template-columns: repeat(3, 1fr); }
+      .breakdown-grid    { grid-template-columns: 1fr 1fr; }
+      .learn-two-col     { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+      .breakdown-grid    { grid-template-columns: 1fr; }
+      .learn-stats-row   { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<canvas id="matrix-canvas"></canvas>
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo" id="logo-text"><span style="color:#22d3ee">MNQ</span> <span style="color:#ffffff">Autonomous Learning AI 1.0</span></div>
+      <div class="ticker-switcher" id="ticker-switcher"></div>
+    </div>
+    <div class="header-right">
+      <div class="instrument-badge" id="instrument-badge">MNQ1!</div>
+      <div class="system-status">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Loading...</span>
+      </div>
+      <div class="last-updated" id="last-updated">—</div>
+    </div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" data-tab="live"     onclick="setTab('live')">Live</div>
+    <div class="tab"        data-tab="backtest" onclick="setTab('backtest')">Backtest</div>
+    <div class="tab"        data-tab="learning" onclick="setTab('learning')">Learning</div>
+    <div class="tab"        data-tab="strategy" onclick="setTab('strategy')">Strategy</div>
+  </div>
+
+  <div class="content">
+    <div class="error-banner" id="error-banner">
+      ⚠ Could not load CSV files — open via local server:
+      <code style="margin-left:8px;background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px">cd ~/tradingview-mcp-jackson && python3 -m http.server 8080</code>
+      then visit <code style="background:rgba(0,0,0,0.3);padding:2px 6px;border-radius:4px">http://localhost:8080/live_dashboard.html</code>
+    </div>
+
+    <!-- EMPTY TICKER STATE -->
+    <div class="empty-ticker" id="empty-ticker">
+      <h2 id="empty-ticker-title">No strategies yet</h2>
+      <p id="empty-ticker-text">Add strategies for this ticker in <code>strategies.json</code> to start tracking trades here.</p>
+    </div>
+
+    <!-- MAIN DASHBOARD (hidden when ticker is empty) -->
+    <div id="dashboard-body">
+
+      <!-- STATS -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total Trades</div>
+          <div class="stat-value accent" id="stat-total">—</div>
+          <div class="stat-sub" id="stat-live-bt">— live · — bt</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-value" id="stat-wr">—</div>
+          <div class="stat-sub" id="stat-wl">—W · —L · —P</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg RR</div>
+          <div class="stat-value accent" id="stat-rr">—</div>
+          <div class="stat-sub">risk:reward ratio</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total PnL</div>
+          <div class="stat-value" id="stat-pnl">—</div>
+          <div class="stat-sub" id="stat-pnl-sub">closed trades</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Best Trade</div>
+          <div class="stat-value green" id="stat-best">—</div>
+          <div class="stat-sub" id="stat-best-date">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Worst Trade</div>
+          <div class="stat-value red" id="stat-worst">—</div>
+          <div class="stat-sub" id="stat-worst-date">—</div>
+        </div>
+      </div>
+
+      <!-- CHARTS -->
+      <div class="charts-row">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Results</span>
+            <span class="card-badge accent" id="donut-total">0</span>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:12px">
+            <div class="chart-wrap" style="width:155px;height:155px">
+              <canvas id="donut-chart"></canvas>
+            </div>
+            <div id="donut-legend" style="width:100%;font-size:12px;display:flex;flex-direction:column;gap:5px"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Win Rate by Strategy</span>
+            <span class="card-badge green">%</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:175px">
+              <canvas id="bar-chart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Cumulative PnL</span>
+            <span class="card-badge accent" id="line-total">0</span>
+          </div>
+          <div class="card-body">
+            <div class="chart-wrap" style="height:175px">
+              <canvas id="line-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STRATEGY CARDS -->
+      <div class="strategy-row" id="strategy-cards"></div>
+
+      <!-- TRADES TABLE -->
+      <div class="card table-card">
+        <div class="card-header">
+          <span class="card-title">Trade Log</span>
+          <span class="card-badge accent" id="table-count">0 trades</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th><th>Mode</th><th>Bias</th>
+                <th>Strategy</th><th>Entry</th><th>Stop</th><th>Target</th>
+                <th>RR</th><th>Result</th><th>PnL</th><th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="trades-tbody"></tbody>
+          </table>
+          <div class="empty-state" id="trades-empty" style="display:none">No trades in this view</div>
+        </div>
+      </div>
+
+      <!-- RULES -->
+      <div class="card" id="rules-card">
+        <div class="card-header">
+          <span class="card-title">Strategy Rules</span>
+          <span class="card-badge amber" id="rules-count">0 rules</span>
+        </div>
+        <div class="card-body">
+          <div class="insights-grid" id="rules-grid"></div>
+          <div class="empty-state" id="rules-empty" style="display:none">No rules defined yet — add them in strategies.json</div>
+        </div>
+      </div>
+
+    </div><!-- /dashboard-body -->
+
+    <!-- STRATEGY TAB BODY -->
+    <div id="strategy-body" style="display:none">
+
+      <div class="no-api-banner" id="strat-no-api" style="display:none">
+        ⚠ Save requires the dashboard server. Switch from <code>python3 -m http.server 8080</code> to
+        <code>node dashboard.js</code> — then saves will work.
+      </div>
+
+      <!-- Paper Trading Settings + Thresholds -->
+      <div class="strat-editor-grid">
+
+        <!-- Paper Trading -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Paper Trading</span>
+            <span class="card-badge green" id="pt-badge">1x MNQ</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Loss Limit Per Trade ($)</label>
+                <input class="form-input" type="number" id="pt-loss-per-trade" value="200" min="0" step="50"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Profit Target Per Trade ($)</label>
+                <input class="form-input" type="number" id="pt-profit" value="400" min="0" step="50"/>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Daily Trade Limit</label>
+                <input class="form-input" type="number" id="pt-trade-limit" value="2" min="1" max="20" step="1"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Daily Loss Limit ($)</label>
+                <input class="form-input" type="number" id="pt-loss" value="400" min="0" step="50"/>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Contracts</label>
+                <input class="form-input" type="number" id="pt-contracts" value="1" min="1" max="10"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Point Value ($)</label>
+                <input class="form-input" type="number" id="pt-pointval" value="2" min="1"/>
+              </div>
+            </div>
+            <div id="pt-calc" style="font-size:11px;color:var(--text-dim);margin-bottom:12px;font-family:'JetBrains Mono',monospace"></div>
+            <div class="btn-row"><button class="save-btn" onclick="savePaperTrading()">Save</button></div>
+          </div>
+        </div>
+
+        <!-- Thresholds -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Thresholds</span>
+            <span class="card-badge accent">pts</span>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">EMA Momentum Block (pts)</label>
+                <input class="form-input" type="number" id="th-ema-block" value="150" min="50" step="10"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Wide Session Threshold (pts)</label>
+                <input class="form-input" type="number" id="th-wide-sess" value="200" min="50" step="10"/>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Wide Session Min RR</label>
+                <input class="form-input" type="number" id="th-wide-rr" value="4" min="2" step="0.5"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">EMA Band Proximity (pts)</label>
+                <input class="form-input" type="number" id="th-ema-prox" value="15" min="5" step="5"/>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">BSL/SSL Proximity (pts)</label>
+                <input class="form-input" type="number" id="th-level-prox" value="20" min="5" step="5"/>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Level Clearance (pts)</label>
+                <input class="form-input" type="number" id="th-clearance" value="2" min="1" step="1"/>
+              </div>
+            </div>
+            <div class="btn-row"><button class="save-btn" onclick="saveThresholds()">Save</button></div>
+          </div>
+        </div>
+
+      </div><!-- /strat-editor-grid -->
+
+      <!-- Entry Type Parameters -->
+      <div class="card strat-editor-full">
+        <div class="card-header">
+          <span class="card-title">Entry Types</span>
+          <span class="card-badge accent" id="strat-active-count">3 active</span>
+        </div>
+        <div class="card-body">
+          <div class="strat-entry-grid" id="entry-type-cards"></div>
+          <div class="btn-row"><button class="save-btn" onclick="saveEntryTypes()">Save All Entry Types</button></div>
+        </div>
+      </div>
+
+      <!-- Rules Cards Editor -->
+      <div class="card strat-editor-full">
+        <div class="card-header">
+          <span class="card-title">Strategy Rules Cards</span>
+          <span class="card-badge amber" id="rules-editor-count">0 rules</span>
+          <button id="rules-visibility-btn" onclick="toggleRulesVisibility()" style="margin-left:auto;font-size:11px;font-weight:600;padding:4px 12px;border-radius:100px;border:1px solid;cursor:pointer;transition:all 0.18s"></button>
+        </div>
+        <div class="card-body">
+          <div id="rules-editor-list"></div>
+          <!-- Add rule form -->
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <div class="form-row-3">
+              <div class="form-group">
+                <label class="form-label">Icon (emoji)</label>
+                <input class="form-input rule-icon-input" type="text" id="new-rule-icon" placeholder="✅" style="width:100%;text-align:left"/>
+              </div>
+              <div class="form-group" style="grid-column:span 2">
+                <label class="form-label">Title</label>
+                <input class="form-input" type="text" id="new-rule-title" placeholder="Rule title..."/>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Description</label>
+              <textarea class="form-input rule-desc-input" id="new-rule-text" placeholder="Rule description..." style="width:100%;resize:vertical;min-height:52px"></textarea>
+            </div>
+            <div class="btn-row">
+              <button class="save-btn" onclick="addRule()">+ Add Rule</button>
+              <button class="save-btn" onclick="saveRulesCards()">Save All Rules</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add New Strategy -->
+      <div class="card strat-editor-full">
+        <div class="card-header">
+          <span class="card-title">Add New Strategy</span>
+          <span class="card-badge accent">+</span>
+        </div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Key (no spaces, e.g. midpoint_reentry)</label>
+              <input class="form-input" type="text" id="new-strat-key" placeholder="my_strategy"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Display Name</label>
+              <input class="form-input" type="text" id="new-strat-name" placeholder="My Strategy"/>
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">Color</label>
+              <input class="form-input" type="color" id="new-strat-color" value="#a78bfa"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Min RR</label>
+              <input class="form-input" type="number" id="new-strat-rr" value="3" min="1" step="0.5"/>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Stop Distance (pts)</label>
+              <input class="form-input" type="number" id="new-strat-stop" value="12" min="1"/>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Description (what triggers this entry)</label>
+            <textarea class="form-input" id="new-strat-desc" placeholder="Describe the entry conditions..." style="width:100%;resize:vertical;min-height:52px"></textarea>
+          </div>
+          <div style="background:var(--amber-dim);border:1px solid rgba(251,191,36,0.2);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--amber)">
+            After adding, tell Claude the entry conditions: <em>"activate [key] strategy — entry when [conditions]"</em>
+          </div>
+          <div class="btn-row"><button class="save-btn" onclick="addNewStrategy()">Add Strategy</button></div>
+        </div>
+      </div>
+
+    </div><!-- /strategy-body -->
+
+    <!-- LEARNING TAB BODY -->
+    <div id="learning-body" style="display:none">
+
+      <!-- Agent Pipeline (rendered by renderPipeline()) -->
+      <div id="pipeline-wrap" style="position:relative">
+        <div id="pipeline-row" class="pipeline-row"></div>
+        <div id="pipeline-unconfigured" style="display:none;position:absolute;inset:0;border-radius:12px;background:rgba(6,8,15,0.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;pointer-events:none">
+          <div style="text-align:center;padding:20px">
+            <div style="font-size:22px;margin-bottom:8px">🚧</div>
+            <div id="pipeline-unconfigured-label" style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:4px"></div>
+            <div style="font-size:12px;color:var(--text-secondary)">No agent or strategies set up for this ticker yet.</div>
+          </div>
+        </div>
+      </div>
+      <!-- No data state -->
+      <div id="learn-empty" class="no-learning" style="display:none">
+        <h3>No learning data yet</h3>
+        <p style="margin-bottom:12px">Run the learning agent after your first session to generate insights.</p>
+        <code>run learning agent</code>
+      </div>
+
+      <!-- Learning Stats -->
+      <div id="learn-data-body" style="display:none">
+        <div class="learn-stats-row" id="learn-stats"></div>
+
+        <!-- Breakdown by entry type / direction / EMA -->
+        <div class="breakdown-grid" id="learn-breakdown"></div>
+
+        <!-- Insights + Tweaks -->
+        <div class="learn-two-col">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Insights</span>
+              <span class="card-badge accent" id="learn-insights-count">0</span>
+            </div>
+            <div class="card-body" id="learn-insights-body"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">Suggested Rule Tweaks</span>
+              <span class="card-badge amber" id="learn-tweaks-count">0</span>
+            </div>
+            <div class="card-body" id="learn-tweaks-body"></div>
+          </div>
+        </div>
+
+        <!-- Violations -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">Rule Violations</span>
+            <span class="card-badge red" id="learn-violations-count">0</span>
+          </div>
+          <div class="card-body" id="learn-violations-body"></div>
+        </div>
+
+        <!-- Session History -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">Session History</span>
+            <span class="card-badge accent" id="learn-sessions-count">0 sessions</span>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="session-table">
+              <thead>
+                <tr>
+                  <th>Date</th><th>Mode</th><th>Trades</th><th>W</th><th>L</th>
+                  <th>Net PnL</th><th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="learn-sessions-tbody"></tbody>
+            </table>
+            <div class="empty-state" id="learn-sessions-empty" style="display:none">No session history yet</div>
+          </div>
+        </div>
+      </div><!-- /learn-data-body -->
+
+    </div><!-- /learning-body -->
+
+  </div><!-- /content -->
+<!-- ADD TICKER MODAL -->
+<div class="modal-overlay" id="add-ticker-modal" onclick="closeAddTicker(event)">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div><div class="modal-title">Add Ticker</div></div>
+      <button class="modal-close" onclick="closeAddTickerDirect()">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px 22px">
+      <div class="form-group">
+        <label class="form-label">Ticker Key (e.g. ES, OIL, BTC)</label>
+        <input class="form-input" type="text" id="at-key" placeholder="ES" style="text-transform:uppercase"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Display Label</label>
+        <input class="form-input" type="text" id="at-label" placeholder="ES · Draw on Liquidity"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">TradingView Symbol</label>
+        <input class="form-input" type="text" id="at-instrument" placeholder="CME_MINI:ES1!"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Timeframe</label>
+        <input class="form-input" type="text" id="at-timeframe" placeholder="3min &amp; 1H"/>
+      </div>
+      <div style="background:var(--accent-dim);border:1px solid rgba(56,189,248,0.15);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:11px;color:var(--text-secondary)">
+        Creates a blank ticker. Add strategies in the <strong style="color:var(--accent)">Strategy tab</strong> once added.
+      </div>
+      <div class="btn-row" style="justify-content:flex-end;gap:8px">
+        <button class="save-btn" style="background:transparent;color:var(--text-dim);border-color:var(--border)" onclick="closeAddTickerDirect()">Cancel</button>
+        <button class="save-btn" onclick="saveAddTicker()">Add Ticker</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TRADE MODAL -->
+<div class="modal-overlay" id="trade-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="modal-title">Trade Detail</div>
+        <div class="modal-meta" id="modal-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeModalDirect()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-screenshots" id="modal-screenshots"></div>
+      <div class="modal-levels" id="modal-levels"></div>
+      <div class="modal-notes" id="modal-notes"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SESSION DETAIL MODAL -->
+<div class="modal-overlay" id="session-detail-modal" onclick="closeSessionDetail(event)">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="sd-title">Session — 2026-04-06</div>
+        <div class="modal-meta" id="sd-meta"></div>
+      </div>
+      <button class="modal-close" onclick="closeSessionDetailDirect()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="sd-tabs">
+        <div class="sd-tab active" onclick="setSessionPage(1)">Insights</div>
+        <div class="sd-tab" onclick="setSessionPage(2)">Tweaks &amp; Violations</div>
+      </div>
+      <!-- Page 1: Insights -->
+      <div class="sd-page active" id="sd-page-1">
+        <div id="sd-insights-body"></div>
+      </div>
+      <!-- Page 2: Tweaks + Violations -->
+      <div class="sd-page" id="sd-page-2">
+        <div class="sd-section-label">Suggested Rule Tweaks</div>
+        <div id="sd-tweaks-body"></div>
+        <div class="sd-section-label">Rule Violations</div>
+        <div id="sd-violations-body"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close" onclick="closeLightbox()">✕</span>
+  <img id="lightbox-img" src=""/>
+</div>
+</div><!-- /app -->
+
+<script>
+// ─── MATRIX RAIN ─────────────────────────────────────────────────────────────
+(function(){
+  const c = document.getElementById('matrix-canvas');
+  const ctx = c.getContext('2d');
+  let W,H,cols,drops;
+  const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*<>?/|\\'.split('');
+  const matrixColors = { NQ:'rgba(56,189,248,0.18)', GOLD:'rgba(251,191,36,0.18)', BTC:'rgba(247,147,26,0.18)' };
+  window.getMatrixColor = ()=> matrixColors[window.currentTicker||'NQ'] || 'rgba(56,189,248,0.18)';
+  function resize(){ W=c.width=window.innerWidth; H=c.height=window.innerHeight; cols=Math.floor(W/18); drops=Array(cols).fill(1); }
+  resize(); window.addEventListener('resize',resize);
+  setInterval(()=>{
+    ctx.fillStyle='rgba(6,8,15,0.05)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=window.getMatrixColor(); ctx.font='13px JetBrains Mono,monospace';
+    for(let i=0;i<drops.length;i++){
+      ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*18,drops[i]*18);
+      if(drops[i]*18>H&&Math.random()>0.975)drops[i]=0;
+      drops[i]++;
+    }
+  },55);
+})();
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let allTrades = [];
+let currentTicker = 'NQ'; window.currentTicker = 'NQ'; setTimeout(()=>applyTickerAccent('NQ'),0);
+let currentTab = 'live';
+let currentStrategy = null;
+let currentResultFilter = null;
+let strategies = {};
+let donutChart, barChart, lineChart;
+let learningData = null;
+let goldLearningData = null;
+let btcLearningData = null;
+
+// ─── CSV PARSER ───────────────────────────────────────────────────────────────
+function parseCSV(text){
+  const lines = text.trim().split('\n').filter(l=>l.trim());
+  if(lines.length<2) return [];
+  const headers = lines[0].split(',').map(h=>h.trim());
+  return lines.slice(1).map(line=>{
+    const fields=[]; let cur='',inQ=false;
+    for(let ch of line){
+      if(ch==='"'){inQ=!inQ;}
+      else if(ch===','&&!inQ){fields.push(cur.trim());cur='';}
+      else cur+=ch;
+    }
+    fields.push(cur.trim());
+    const obj={};
+    headers.forEach((h,i)=>obj[h]=(fields[i]||'').replace(/^"|"$/g,''));
+    return obj;
+  }).filter(r=>r.date&&r.date.trim());
+}
+
+// ─── LOAD ─────────────────────────────────────────────────────────────────────
+async function loadAll(){
+  let ok = true;
+
+  // Load strategies.json + rules.json (always, so toggles work on any tab)
+  try {
+    const r = await fetch('strategies.json?'+Date.now());
+    strategies = await r.json();
+    _strategiesCache = strategies;
+  } catch(e){ strategies={}; ok=false; }
+  try {
+    const r = await fetch('/api/rules');
+    if(r.ok) _rulesCache = await r.json();
+  } catch(e){}
+
+  // Build ticker switcher
+  buildTickerSwitcher();
+
+  // Load CSVs
+  let backtest=[], live=[];
+  try {
+    const r = await fetch('backtest_log.csv?'+Date.now());
+    if(!r.ok) throw new Error();
+    backtest = parseCSV(await r.text()).map(t=>({...t,mode:'backtest'}));
+  } catch(e){ ok=false; }
+  try {
+    const r = await fetch('live_log.csv?'+Date.now());
+    if(!r.ok) throw new Error();
+    live = parseCSV(await r.text()).map(t=>({...t,mode:'live'}));
+  } catch(e){ ok=false; }
+
+  if(!ok && backtest.length===0){
+    document.getElementById('error-banner').style.display='block';
+    setStatus('red','Load failed');
+    return;
+  }
+
+  allTrades = [...live,...backtest].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  // Load learning.json (optional — no error if missing)
+  try {
+    const r = await fetch('learning.json?'+Date.now());
+    if(r.ok) learningData = await r.json();
+  } catch(e){ learningData = null; }
+
+  // Load gold_learning.json (optional — no error if missing)
+  try {
+    const rg = await fetch('gold_learning.json?'+Date.now());
+    if(rg.ok) goldLearningData = await rg.json();
+  } catch(e){ goldLearningData = null; }
+
+  // Load btc_learning.json (optional — no error if missing)
+  try {
+    const rb = await fetch('btc_learning.json?'+Date.now());
+    if(rb.ok) btcLearningData = await rb.json();
+  } catch(e){ btcLearningData = null; }
+
+  const liveCount = live.length;
+  const btCount   = backtest.length;
+  document.getElementById('last-updated').textContent = `${liveCount}L · ${btCount}BT · ${new Date().toLocaleTimeString()}`;
+  if(currentTab==='learning'){
+    el('learning-body').style.display='block';
+    el('dashboard-body').style.display='none';
+    el('empty-ticker').style.display='none';
+    renderLearning();
+  } else if(currentTab==='strategy'){
+    el('strategy-body').style.display='block';
+    el('dashboard-body').style.display='none';
+    el('empty-ticker').style.display='none';
+    // don't auto-reload strategy tab — user may be mid-edit
+  } else {
+    render();
+  }
+}
+
+// ─── TICKER SWITCHER ─────────────────────────────────────────────────────────
+function buildTickerSwitcher(){
+  const container = document.getElementById('ticker-switcher');
+  const tickers = Object.keys(strategies);
+  container.innerHTML = tickers.map(t=>`
+    <button class="ticker-btn ${t===currentTicker?'active':''}" onclick="setTicker('${t}')">${t}</button>
+  `).join('') + `<button class="ticker-btn add-ticker" onclick="openAddTicker()">+ Add</button>`;
+}
+
+const tickerAccents = {
+  NQ:   { accent:'#38bdf8', dim:'rgba(56,189,248,0.15)',  glow:'rgba(56,189,248,0.06)',  border:'rgba(56,189,248,0.08)',  borderActive:'rgba(56,189,248,0.2)'  },
+  GOLD: { accent:'#fbbf24', dim:'rgba(251,191,36,0.15)',  glow:'rgba(251,191,36,0.06)',  border:'rgba(251,191,36,0.08)',  borderActive:'rgba(251,191,36,0.2)'  },
+  BTC:  { accent:'#f7931a', dim:'rgba(247,147,26,0.15)',  glow:'rgba(247,147,26,0.06)',  border:'rgba(247,147,26,0.08)',  borderActive:'rgba(247,147,26,0.2)'  },
+};
+function applyTickerAccent(t){
+  const a = tickerAccents[t] || tickerAccents.NQ;
+  const r = document.documentElement.style;
+  r.setProperty('--accent',        a.accent);
+  r.setProperty('--accent-dim',    a.dim);
+  r.setProperty('--accent-glow',   a.glow);
+  r.setProperty('--border',        a.border);
+  r.setProperty('--border-active', a.borderActive);
+}
+
+function setTicker(t){
+  currentTicker = t;
+  window.currentTicker = t;
+  applyTickerAccent(t);
+  currentStrategy = null;
+  currentResultFilter = null;
+  buildTickerSwitcher();
+  // Update logo
+  const logoMap = {
+    NQ:   { pre: 'MNQ',  post: 'Autonomous Learning AI 1.0', preColor: '#22d3ee', postColor: '#ffffff' },
+    GOLD: { pre: 'GOLD', post: 'Autonomous Learning AI 1.0', preColor: '#fbbf24', postColor: '#ffffff' },
+    BTC:  { pre: 'BTC',  post: 'Autonomous Learning AI 1.0', preColor: '#ffffff', postColor: '#ffffff' },
+  };
+  const logo = logoMap[t] || { pre: t, post: 'Autonomous Learning AI 1.0', preColor: '#ffffff', postColor: '#ffffff' };
+  document.getElementById('logo-text').innerHTML = `<span style="color:${logo.preColor}">${logo.pre}</span> <span style="color:${logo.postColor}">${logo.post}</span>`;
+  const instrRaw = (_strategiesCache && _strategiesCache[t] && _strategiesCache[t].instrument) || t;
+  const instrDisplay = instrRaw.includes(':') ? instrRaw.split(':').pop() : instrRaw;
+  document.getElementById('instrument-badge').textContent = instrDisplay;
+  // Reset all bodies before routing — prevents stale panels from prior ticker
+  el('learning-body').style.display  = 'none';
+  el('strategy-body').style.display  = 'none';
+  el('dashboard-body').style.display = 'none';
+  el('empty-ticker').style.display   = 'none';
+  if(currentTab==='learning'){
+    el('learning-body').style.display = 'block';
+    renderLearning();
+  } else if(currentTab==='strategy'){
+    el('strategy-body').style.display = 'block';
+    loadStrategyTab();
+  } else {
+    render();
+  }
+}
+
+// ─── FILTER ───────────────────────────────────────────────────────────────────
+function getDisabledSetups(){
+  if(!_rulesCache) return new Set();
+  const tickerKey = currentTicker.toLowerCase();
+  const sp = (_rulesCache[tickerKey] && _rulesCache[tickerKey].stop_params)
+    ? _rulesCache[tickerKey].stop_params
+    : _rulesCache.stop_params || {};
+  return new Set(Object.keys(sp).filter(k => sp[k].active === false));
+}
+
+function filtered(){
+  let trades = allTrades.filter(t=>t.ticker===currentTicker);
+  if(currentTab==='live')     trades = trades.filter(t=>t.mode==='live');
+  if(currentTab==='backtest') trades = trades.filter(t=>t.mode==='backtest');
+  // Hide trades for disabled setups
+  const disabled = getDisabledSetups();
+  if(disabled.size) trades = trades.filter(t=>!disabled.has(t.entry_type));
+  return trades;
+}
+
+function filteredForTable(){
+  let trades = filtered();
+  if(currentStrategy) trades = trades.filter(t=>t.entry_type===currentStrategy);
+  if(currentResultFilter) trades = trades.filter(t=>t.result===currentResultFilter);
+  return trades;
+}
+
+function setResultFilter(result){
+  currentResultFilter = currentResultFilter===result ? null : result;
+  const cfg = strategies[currentTicker]||{};
+  renderDonut(filtered());
+  renderTable(filteredForTable(), cfg);
+}
+
+function setStrategy(key){
+  currentStrategy = currentStrategy===key ? null : key;
+  currentResultFilter = null;
+  const cfg = strategies[currentTicker]||{};
+  renderStrategyCards(filtered(), cfg);
+  renderDonut(filtered());
+  renderTable(filteredForTable(), cfg);
+}
+
+function setTab(tab){
+  currentTab = tab;
+  currentStrategy = null;
+  currentResultFilter = null;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  const isSpecial = tab==='learning' || tab==='strategy';
+  el('learning-body').style.display = tab==='learning' ? 'block' : 'none';
+  el('strategy-body').style.display = tab==='strategy' ? 'block' : 'none';
+  if(isSpecial){
+    el('dashboard-body').style.display='none';
+    el('empty-ticker').style.display='none';
+    if(tab==='learning') renderLearning();
+    if(tab==='strategy') loadStrategyTab();
+  } else {
+    render();
+  }
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render(){
+  const cfg = strategies[currentTicker]||{};
+  const hasStrategies = cfg.strategies && Object.keys(cfg.strategies).length > 0;
+  const trades = filtered();
+
+  // Show/hide empty state
+  document.getElementById('empty-ticker').style.display   = hasStrategies ? 'none'  : 'block';
+  document.getElementById('dashboard-body').style.display = hasStrategies ? 'block' : 'none';
+  if(!hasStrategies){
+    document.getElementById('empty-ticker-title').textContent = currentTicker+' — No strategies configured';
+    return;
+  }
+
+  renderStats(trades);
+  renderDonut(trades);
+  renderBar(trades, cfg);
+  renderLine(trades);
+  renderStrategyCards(trades, cfg);
+  renderTable(filteredForTable(), cfg);
+  renderRules(cfg);
+}
+
+// ─── STATS ────────────────────────────────────────────────────────────────────
+function renderStats(trades){
+  const a = trades.filter(t=>t.result!=='no_entry');
+  const wins=a.filter(t=>t.result==='win').length;
+  const losses=a.filter(t=>t.result==='loss').length;
+  const partials=a.filter(t=>t.result==='partial').length;
+  const total=a.length;
+  const wr=total>0?((wins+partials*0.5)/total*100).toFixed(1):'—';
+  const pnl=a.reduce((s,t)=>s+(parseFloat(t.pnl)||0),0);
+  const rrs=a.filter(t=>t.rr).map(t=>parseFloat(t.rr)).filter(n=>!isNaN(n));
+  const avgRR=rrs.length>0?(rrs.reduce((a,b)=>a+b,0)/rrs.length).toFixed(2):'—';
+  const liveN=trades.filter(t=>t.mode==='live').length;
+  const btN=trades.filter(t=>t.mode==='backtest').length;
+  const sorted=[...a].filter(t=>t.pnl!=='').sort((a,b)=>parseFloat(b.pnl)-parseFloat(a.pnl));
+  const best=sorted[0], worst=sorted[sorted.length-1];
+
+  setEl('stat-total', trades.length, 'accent');
+  setEl('stat-live-bt', `${liveN} live · ${btN} bt`, null, true);
+  setEl('stat-wr', total>0?wr+'%':'—', parseFloat(wr)>=50?'green':parseFloat(wr)<40?'red':'amber');
+  setEl('stat-wl', `${wins}W · ${losses}L · ${partials}P`, null, true);
+  setEl('stat-rr', avgRR!=='—'?avgRR+':1':'—', 'accent');
+  setEl('stat-pnl', pnl>0?'+'+Math.round(pnl):Math.round(pnl), pnl>0?'green':pnl<0?'red':'');
+  setEl('stat-pnl-sub', `${total} closed trades`, null, true);
+  setEl('stat-best', best?'+'+best.pnl:'—', 'green');
+  setEl('stat-best-date', best?best.date:'—', null, true);
+  const worstPnl = worst ? parseFloat(worst.pnl) : 0;
+  setEl('stat-worst', worstPnl < 0 ? worstPnl : '0', worstPnl < 0 ? 'red' : '');
+  setEl('stat-worst-date', worstPnl < 0 ? worst.date : 'no losses yet', null, true);
+}
+
+// ─── DONUT ────────────────────────────────────────────────────────────────────
+function renderDonut(trades){
+  const a=trades.filter(t=>t.result!=='no_entry');
+  const wins=a.filter(t=>t.result==='win').length;
+  const losses=a.filter(t=>t.result==='loss').length;
+  const partials=a.filter(t=>t.result==='partial').length;
+  const noEntry=trades.filter(t=>t.result==='no_entry').length;
+  el('donut-total').textContent=trades.length;
+  const data=[wins,partials,losses,noEntry];
+  const resultKeys=['win','partial','loss','no_entry'];
+  const labels=['Win','Partial','Loss','No Trade'];
+  const colors=['#34d399','#fbbf24','#f87171','#475569'];
+  el('donut-legend').innerHTML=labels.map((l,i)=>data[i]>0?`
+    <div onclick="setResultFilter('${resultKeys[i]}')" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:3px 6px;border-radius:6px;transition:background 0.15s;${currentResultFilter===resultKeys[i]?'background:'+colors[i]+'22;outline:1px solid '+colors[i]+'55':''}" onmouseover="this.style.background='${colors[i]}18'" onmouseout="this.style.background='${currentResultFilter===resultKeys[i]?colors[i]+'22':'transparent'}'">
+      <div style="width:7px;height:7px;border-radius:50%;background:${colors[i]};flex-shrink:0"></div>
+      <span style="color:${currentResultFilter===resultKeys[i]?colors[i]:'var(--text-secondary)'};flex:1;font-size:12px;font-weight:${currentResultFilter===resultKeys[i]?'600':'400'}">${l}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${colors[i]};font-weight:600">${data[i]}</span>
+      ${currentResultFilter===resultKeys[i]?`<span style="font-size:9px;color:${colors[i]};font-weight:700;opacity:0.8">✕</span>`:''}
+    </div>`:'').join('');
+  if(donutChart)donutChart.destroy();
+  donutChart=new Chart(el('donut-chart'),{
+    type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:colors.map((c,i)=>currentResultFilter===resultKeys[i]?c:c+'99'),borderColor:'#06080f',borderWidth:3,borderRadius:currentResultFilter?2:0}]},
+    options:{
+      responsive:true,maintainAspectRatio:true,cutout:'68%',
+      plugins:{legend:{display:false},tooltip:chartTooltip()},
+      onClick(_,elements){
+        if(!elements.length) return;
+        const i=elements[0].index;
+        if(data[i]>0) setResultFilter(resultKeys[i]);
+      }
+    }
+  });
+}
+
+// ─── BAR ─────────────────────────────────────────────────────────────────────
+function renderBar(trades, cfg){
+  const disabled=getDisabledSetups();
+  const keys=Object.keys(cfg.strategies||{}).filter(k=>!disabled.has(k));
+  const labels=keys.map(k=>cfg.strategies[k]);
+  const colors=keys.map(k=>(cfg.colors||{})[k]||'#38bdf8');
+  const data=keys.map(k=>{
+    const t=trades.filter(x=>x.entry_type===k&&x.result!=='no_entry');
+    if(!t.length) return 0;
+    return Math.round((t.filter(x=>x.result==='win').length+t.filter(x=>x.result==='partial').length*0.5)/t.length*100);
+  });
+  if(barChart)barChart.destroy();
+  barChart=new Chart(el('bar-chart'),{
+    type:'bar',
+    data:{labels,datasets:[{label:'Win Rate %',data,backgroundColor:colors.map(c=>c+'44'),borderColor:colors,borderWidth:2,borderRadius:6}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        x:{grid:{color:'rgba(56,189,248,0.04)'},ticks:{color:'#94a3b8',font:{size:11}}},
+        y:{min:0,max:100,grid:{color:'rgba(56,189,248,0.06)'},ticks:{color:'#94a3b8',font:{size:11},callback:v=>v+'%'}}
+      },
+      plugins:{legend:{display:false},tooltip:chartTooltip()}
+    }
+  });
+}
+
+// ─── LINE ─────────────────────────────────────────────────────────────────────
+function renderLine(trades){
+  const sorted=[...trades].filter(t=>t.result!=='no_entry'&&t.pnl!=='').sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let cum=0;
+  const pts=sorted.map(t=>{cum+=(parseFloat(t.pnl)||0);return{x:t.date,y:Math.round(cum)};});
+  const total=Math.round(cum);
+  el('line-total').textContent=(total>=0?'+':'')+total;
+  el('line-total').className='card-badge '+(total>=0?'green':'red');
+  if(lineChart)lineChart.destroy();
+  lineChart=new Chart(el('line-chart'),{
+    type:'line',
+    data:{
+      labels:pts.map(p=>p.x),
+      datasets:[{
+        label:'Cumulative PnL',data:pts.map(p=>p.y),
+        borderColor:'#38bdf8',borderWidth:2,
+        backgroundColor:'rgba(56,189,248,0.06)',
+        pointBackgroundColor:pts.map(p=>p.y>=0?'#34d399':'#f87171'),
+        pointRadius:4,pointHoverRadius:6,fill:true,tension:0.3
+      }]
+    },
+    options:{responsive:true,maintainAspectRatio:false,
+      scales:{
+        x:{grid:{color:'rgba(56,189,248,0.04)'},ticks:{color:'#94a3b8',font:{size:10},maxRotation:30}},
+        y:{grid:{color:'rgba(56,189,248,0.06)'},ticks:{color:'#94a3b8',font:{size:11}}}
+      },
+      plugins:{legend:{display:false},tooltip:chartTooltip()}
+    }
+  });
+}
+
+// ─── STRATEGY CARDS ───────────────────────────────────────────────────────────
+function renderStrategyCards(trades, cfg){
+  const container=el('strategy-cards');
+  const disabled = getDisabledSetups();
+  const keys=Object.keys(cfg.strategies||{}).filter(k=>!disabled.has(k));
+  if(!keys.length){container.innerHTML='';return;}
+
+  container.innerHTML=keys.map(k=>{
+    const name=(cfg.strategies||{})[k]||k;
+    const color=(cfg.colors||{})[k]||'#38bdf8';
+    const t=trades.filter(x=>x.entry_type===k);
+    const a=t.filter(x=>x.result!=='no_entry');
+    const wins=a.filter(x=>x.result==='win').length;
+    const losses=a.filter(x=>x.result==='loss').length;
+    const partials=a.filter(x=>x.result==='partial').length;
+    const total=a.length;
+    const wr=total>0?Math.round((wins+partials*0.5)/total*100):0;
+    const pnl=a.reduce((s,x)=>s+(parseFloat(x.pnl)||0),0);
+    const rrs=a.filter(x=>x.rr).map(x=>parseFloat(x.rr)).filter(n=>!isNaN(n));
+    const avgRR=rrs.length>0?(rrs.reduce((a,b)=>a+b,0)/rrs.length).toFixed(1):'—';
+    const wrColor=wr>=60?'var(--green)':wr>=40?'var(--amber)':wr>0?'var(--red)':'var(--text-dim)';
+    const last6=a.slice(-6);
+    const miniBars=last6.map(x=>{
+      const c=x.result==='win'?'#34d399':x.result==='loss'?'#f87171':'#fbbf24';
+      return `<div style="width:15px;height:15px;border-radius:3px;background:${c}22;border:1px solid ${c};display:flex;align-items:center;justify-content:center;font-size:8px;color:${c};font-weight:700">${x.result==='win'?'W':x.result==='loss'?'L':'P'}</div>`;
+    }).join('');
+    const lastTrade=t[0];
+    const isSelected = currentStrategy === k;
+    return `
+    <div class="strat-card ${isSelected?'selected':''}" onclick="setStrategy('${k}')" title="${isSelected?'Click to deselect':'Click to filter trade log'}">
+      <div class="strat-header">
+        <div class="strat-name">${name}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${isSelected ? `<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;background:var(--accent-dim);color:var(--accent);border:1px solid rgba(56,189,248,0.3);text-transform:uppercase;letter-spacing:0.8px">Filtered</span>` : ''}
+          <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:100px;background:${color}22;color:${color};border:1px solid ${color}44">${total} trades</span>
+        </div>
+      </div>
+      <div class="strat-body">
+        <div class="strat-stats">
+          <div class="strat-stat">
+            <div class="strat-stat-val" style="color:${wrColor}">${total>0?wr+'%':'—'}</div>
+            <div class="strat-stat-lbl">Win Rate</div>
+          </div>
+          <div class="strat-stat">
+            <div class="strat-stat-val" style="color:var(--accent)">${avgRR!=='—'?avgRR+':1':'—'}</div>
+            <div class="strat-stat-lbl">Avg RR</div>
+          </div>
+          <div class="strat-stat">
+            <div class="strat-stat-val" style="color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>0?'+':''}${Math.round(pnl)}</div>
+            <div class="strat-stat-lbl">PnL</div>
+          </div>
+        </div>
+        <div class="mini-bar-wrap"><div class="mini-bar-label"><span>W</span><span>${wins}</span></div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${total>0?wins/total*100:0}%;background:var(--green)"></div></div></div>
+        <div class="mini-bar-wrap" style="margin-top:5px"><div class="mini-bar-label"><span>L</span><span>${losses}</span></div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${total>0?losses/total*100:0}%;background:var(--red)"></div></div></div>
+        ${partials>0?`<div class="mini-bar-wrap" style="margin-top:5px"><div class="mini-bar-label"><span>P</span><span>${partials}</span></div><div class="mini-bar-track"><div class="mini-bar-fill" style="width:${total>0?partials/total*100:0}%;background:var(--amber)"></div></div></div>`:''}
+        ${last6.length>0?`<div style="margin-top:10px"><div style="font-size:10px;color:var(--text-dim);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.8px">Last ${last6.length}</div><div style="display:flex;gap:3px">${miniBars}</div></div>`:''}
+        ${lastTrade?`<div class="strat-last">Last: ${lastTrade.date} · ${lastTrade.result}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─── TABLE ────────────────────────────────────────────────────────────────────
+function renderTable(trades, cfg){
+  const tbody=el('trades-tbody');
+  const empty=el('trades-empty');
+  const cfg2 = strategies[currentTicker]||{};
+  const stratLabel = currentStrategy ? (cfg2.strategies||{})[currentStrategy]||currentStrategy : null;
+  el('table-count').textContent = trades.length + ' trades' + (stratLabel ? ` · ${stratLabel}` : '');
+  el('table-count').className = 'card-badge ' + (stratLabel ? 'amber' : 'accent');
+  if(!trades.length){tbody.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  // Store trades on window for modal access
+  window._tradesForModal = trades;
+  window._cfgForModal = cfg;
+  tbody.innerHTML=trades.map((t,i)=>{
+    const pnlVal=parseFloat(t.pnl);
+    const pnlHtml=isNaN(pnlVal)||t.pnl===''?'<span class="pnl-zero">—</span>':pnlVal>0?`<span class="pnl-pos">+${pnlVal}</span>`:pnlVal<0?`<span class="pnl-neg">${pnlVal}</span>`:'<span class="pnl-zero">0</span>';
+    const biasClass=t.bias==='bullish'?'long':'short';
+    const biasLabel=t.bias==='bullish'?'LONG':t.bias==='bearish'?'SHORT':t.bias;
+    const stratName=(cfg.strategies||{})[t.entry_type]||t.entry_type||'—';
+    const shortNotes=t.notes?(t.notes.length>65?t.notes.slice(0,65)+'…':t.notes):'—';
+    return `<tr ondblclick="openTradeModal(window._tradesForModal[${i}], window._cfgForModal)" title="Double-click to view screenshots">
+      <td class="mono">${t.date}</td>
+      <td><span class="pill ${t.mode}">${t.mode}</span></td>
+      <td><span class="pill ${biasClass}">${biasLabel}</span></td>
+      <td style="color:var(--accent);font-size:12px">${stratName}</td>
+      <td class="mono">${t.entry||'—'}</td>
+      <td class="mono" style="color:var(--red)">${t.stop||'—'}</td>
+      <td class="mono" style="color:var(--green)">${t.target||'—'}</td>
+      <td class="mono" style="color:var(--accent)">${t.result==='no_entry'?'—':t.rr?t.rr+':1':'—'}</td>
+      <td><span class="pill ${t.result}">${t.result}</span></td>
+      <td>${pnlHtml}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.notes}">${shortNotes}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── RULES ────────────────────────────────────────────────────────────────────
+function renderRules(cfg){
+  const rules=cfg.rules||[];
+  const show = cfg.show_rules !== false; // default on
+  el('rules-card').style.display = show ? 'block' : 'none';
+  if(!show) return;
+  el('rules-count').textContent=rules.length+' rules';
+  el('rules-empty').style.display=rules.length?'none':'block';
+  el('rules-grid').innerHTML=rules.map(r=>`
+    <div class="insight-item">
+      <div class="insight-icon">${r.icon}</div>
+      <div class="insight-title">${r.title}</div>
+      <div class="insight-text">${r.text}</div>
+    </div>`).join('');
+}
+
+function updateRulesVisibilityBtn(){
+  const cfg = (_strategiesCache && _strategiesCache[currentTicker]) || {};
+  const show = cfg.show_rules !== false;
+  const btn = el('rules-visibility-btn');
+  if(!btn) return;
+  if(show){
+    btn.textContent = 'Visible in Live/BT';
+    btn.style.background = 'rgba(52,211,153,0.12)';
+    btn.style.color = '#34d399';
+    btn.style.borderColor = 'rgba(52,211,153,0.3)';
+  } else {
+    btn.textContent = 'Hidden in Live/BT';
+    btn.style.background = 'rgba(248,113,113,0.12)';
+    btn.style.color = '#f87171';
+    btn.style.borderColor = 'rgba(248,113,113,0.3)';
+  }
+}
+
+async function toggleRulesVisibility(){
+  if(!_strategiesCache || !_strategiesCache[currentTicker]) return;
+  const cfg = _strategiesCache[currentTicker];
+  cfg.show_rules = cfg.show_rules === false ? true : false;
+  await apiSave('strategies', _strategiesCache, cfg.show_rules ? 'Rules visible' : 'Rules hidden');
+  updateRulesVisibilityBtn();
+}
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+function el(id){return document.getElementById(id);}
+function setEl(id, val, cls, isSub){
+  const e=el(id);
+  if(!e) return;
+  e.textContent=val;
+  if(cls!==undefined&&cls!==null&&!isSub) e.className='stat-value '+(cls||'');
+}
+function setStatus(color, text){
+  // legacy shim — text only, dot is now controlled by checkTVStatus
+  el('status-text').textContent=text;
+}
+
+async function checkTVStatus(){
+  const dot = el('status-dot');
+  const txt = el('status-text');
+  try {
+    const r = await fetch('/api/tv-status');
+    if(!r.ok) throw new Error();
+    const d = await r.json();
+    if(d.tv_tab){
+      dot.className='status-dot tv-on';
+      txt.textContent='TV Connected';
+    } else if(d.connected){
+      dot.className='status-dot tv-off';
+      txt.textContent='TV — no chart tab';
+    } else {
+      dot.className='status-dot tv-off';
+      txt.textContent='TV Offline';
+    }
+  } catch(e){
+    // Running on python server — fall back to dim dot
+    dot.className='status-dot';
+    txt.textContent='no server';
+  }
+}
+function chartTooltip(){
+  return {backgroundColor:'rgba(14,18,30,0.95)',borderColor:'rgba(56,189,248,0.2)',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#94a3b8'};
+}
+
+// ─── TRADE MODAL ─────────────────────────────────────────────────────────────
+function openTradeModal(trade, cfg) {
+  const resultColor = trade.result==='win'?'var(--green)':trade.result==='loss'?'var(--red)':trade.result==='partial'?'var(--amber)':'var(--text-dim)';
+  const biasColor   = trade.bias==='bullish'?'var(--green)':'var(--red)';
+  const stratName   = (cfg.strategies||{})[trade.entry_type] || trade.entry_type || '—';
+  const pnlVal      = parseFloat(trade.pnl);
+  const pnlStr      = isNaN(pnlVal)||trade.pnl==='' ? '—' : (pnlVal>0?'+':'')+pnlVal;
+  const pnlColor    = pnlVal>0?'var(--green)':pnlVal<0?'var(--red)':'var(--text-dim)';
+
+  // Title + meta
+  el('modal-title').textContent = trade.date + ' · ' + stratName;
+  el('modal-meta').innerHTML = `
+    <span class="pill ${trade.result}">${trade.result}</span>
+    <span class="pill ${trade.mode}">${trade.mode}</span>
+    <span style="font-size:11px;color:${biasColor};font-weight:600">${trade.bias==='bullish'?'▲ LONG':'▼ SHORT'}</span>
+    <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:${pnlColor};font-weight:700">${pnlStr} PnL</span>
+    ${trade.rr?`<span style="font-size:11px;color:var(--amber);font-family:'JetBrains Mono',monospace">${trade.rr}:1 RR</span>`:''}
+  `;
+
+  // Screenshots
+  const shotContainer = el('modal-screenshots');
+  const hasBefore = trade.screenshot_before && trade.screenshot_before.trim();
+  const hasAfter  = trade.screenshot_after  && trade.screenshot_after.trim();
+  if (hasBefore || hasAfter) {
+    shotContainer.style.display = 'grid';
+    shotContainer.innerHTML = `
+      ${hasBefore ? `
+        <div class="shot">
+          <img src="${trade.screenshot_before}" alt="Before" onclick="openLightbox('${trade.screenshot_before}')" onerror="this.parentElement.innerHTML='<div style=\\'padding:40px;text-align:center;color:var(--text-dim);border:1px dashed var(--border);border-radius:8px;font-size:12px\\'>Screenshot not found</div>'"/>
+          <div class="shot-label">Before · Entry Setup</div>
+        </div>` : '<div class="shot"><div style="padding:40px;text-align:center;color:var(--text-dim);border:1px dashed var(--border);border-radius:8px;font-size:12px">No before screenshot</div></div>'}
+      ${hasAfter ? `
+        <div class="shot">
+          <img src="${trade.screenshot_after}" alt="After" onclick="openLightbox('${trade.screenshot_after}')" onerror="this.parentElement.innerHTML='<div style=\\'padding:40px;text-align:center;color:var(--text-dim);border:1px dashed var(--border);border-radius:8px;font-size:12px\\'>Screenshot not found</div>'"/>
+          <div class="shot-label">After · Result</div>
+        </div>` : '<div class="shot"><div style="padding:40px;text-align:center;color:var(--text-dim);border:1px dashed var(--border);border-radius:8px;font-size:12px">No after screenshot</div></div>'}
+    `;
+  } else {
+    shotContainer.style.display = 'block';
+    shotContainer.innerHTML = `<div class="modal-no-shots">No screenshots logged for this trade.<br><span style="font-size:11px;margin-top:4px;display:block">Add screenshot_before / screenshot_after paths to the CSV.</span></div>`;
+  }
+
+  // Levels
+  const levels = [];
+  if (trade.bsl)      levels.push(['BSL', trade.bsl]);
+  if (trade.entry)    levels.push(['Entry', trade.entry]);
+  if (trade.stop)     levels.push(['Stop', trade.stop]);
+  if (trade.midpoint) levels.push(['Mid', trade.midpoint]);
+  if (trade.ssl)      levels.push(['SSL', trade.ssl]);
+  if (trade.target)   levels.push(['Target', trade.target]);
+  el('modal-levels').innerHTML = levels.map(([l,v])=>`
+    <div class="modal-level">${l}<span>${v}</span></div>
+  `).join('');
+
+  // Notes
+  el('modal-notes').textContent = trade.notes || 'No notes recorded.';
+
+  el('trade-modal').classList.add('active');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal(e) {
+  if (e.target === el('trade-modal')) closeModalDirect();
+}
+function closeModalDirect() {
+  el('trade-modal').classList.remove('active');
+  document.body.style.overflow = '';
+}
+function openLightbox(src) {
+  el('lightbox-img').src = src;
+  el('lightbox').classList.add('active');
+}
+function closeLightbox() {
+  el('lightbox').classList.remove('active');
+}
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape'){
+    closeLightbox();
+    closeModalDirect();
+    closeAddTickerDirect();
+  }
+});
+
+// ─── STRATEGY TAB ─────────────────────────────────────────────────────────────
+let _rulesCache = null;
+let _strategiesCache = null;
+let _apiAvailable = null;
+
+async function checkApi(){
+  if(_apiAvailable !== null) return _apiAvailable;
+  try { const r = await fetch('/api/rules'); _apiAvailable = r.ok; }
+  catch(e){ _apiAvailable = false; }
+  return _apiAvailable;
+}
+
+async function loadStrategyTab(){
+  const apiOk = await checkApi();
+  el('strat-no-api').style.display = apiOk ? 'none' : 'block';
+
+  try {
+    const [rr, ss] = await Promise.all([
+      fetch('/api/rules').then(r=>r.json()),
+      fetch('/api/strategies').then(r=>r.json()),
+    ]);
+    _rulesCache = rr;
+    _strategiesCache = ss;
+    populateStrategyTab();
+  } catch(e){
+    showToast('Could not load config files', 'error');
+  }
+}
+
+function populateStrategyTab(){
+  const r = _rulesCache;
+  const s = _strategiesCache;
+  // Load paper trading from ticker-specific block if it exists, else top-level
+  const tickerKey = currentTicker.toLowerCase(); // 'nq' → fallback, 'gold' → r.gold
+  const ptSource = (r[tickerKey] && r[tickerKey].paper_trading) ? r[tickerKey].paper_trading : r.paper_trading || {};
+  const pt = ptSource;
+  const th = (r[tickerKey] && r[tickerKey].thresholds) ? r[tickerKey].thresholds : r.thresholds || {};
+  const sp = (r[tickerKey] && r[tickerKey].stop_params) ? r[tickerKey].stop_params : r.stop_params || {};
+  const nqCfg = s[currentTicker] || {};
+  if(!_strategiesCache[currentTicker]) _strategiesCache[currentTicker] = { strategies:{}, colors:{}, rules:[] };
+
+  // Badge — use ticker-specific contract name if available, else instrument, else ticker key
+  const hasTickerPt = !!(r[tickerKey] && r[tickerKey].paper_trading);
+  const instrRaw = (s[currentTicker] && s[currentTicker].instrument) || currentTicker;
+  const instrShort = instrRaw.includes(':') ? instrRaw.split(':').pop() : instrRaw;
+  const badgeLabel = hasTickerPt ? (pt.contract || pt.contracts_label || instrShort) : instrShort;
+  el('pt-badge').textContent = `${pt.contracts || 1}x ${badgeLabel}`;
+
+  // Paper trading fields
+  el('pt-loss-per-trade').value = pt.target_risk_usd         || 200;
+  el('pt-profit').value         = pt.daily_profit_target_usd || 400;
+  el('pt-trade-limit').value    = pt.daily_trade_limit       || 2;
+  el('pt-loss').value           = pt.daily_loss_limit_usd    || 400;
+  el('pt-contracts').value      = pt.contracts   || 1;
+  el('pt-pointval').value       = pt.point_value || 2;
+  updatePtCalc();
+
+  // Threshold fields
+  el('th-ema-block').value  = th.ema_momentum_block_pts    || 150;
+  el('th-wide-sess').value  = th.wide_session_pts           || 200;
+  el('th-wide-rr').value    = th.wide_session_min_rr        || 4;
+  el('th-ema-prox').value   = th.ema_proximity_pts          || 15;
+  el('th-level-prox').value = th.bsl_ssl_proximity_pts      || 20;
+  el('th-clearance').value  = th.price_level_clearance_pts  || 2;
+
+  // Entry type cards
+  const strategies = nqCfg.strategies || {};
+  const colors     = nqCfg.colors     || {};
+  const keys = Object.keys(strategies);
+  const activeCount = keys.filter(k => (sp[k]||{}).active !== false).length;
+  el('strat-active-count').textContent = activeCount + ' active';
+
+  el('entry-type-cards').innerHTML = keys.map(k => {
+    const name  = strategies[k] || k;
+    const color = colors[k] || '#38bdf8';
+    const p = sp[k] || { entry_offset_pts:12, stop_pts:12, min_rr:3, active:true, description:'' };
+    const isActive = p.active !== false;
+    return `
+    <div class="card" style="border-color:${color}22">
+      <div class="card-header" style="border-bottom-color:${color}22">
+        <span class="card-title" style="color:${color}">${name}</span>
+        <span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-dim)">${k}</span>
+      </div>
+      <div class="card-body">
+        <div class="toggle-wrap">
+          <label class="toggle" title="Enable/disable this setup">
+            <input type="checkbox" id="sp-active-${k}" ${isActive?'checked':''} onchange="updateActiveCount()"/>
+            <div class="toggle-track"></div>
+            <div class="toggle-thumb"></div>
+          </label>
+          <span class="toggle-label">${isActive ? 'Active' : 'Disabled'}</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name</label>
+          <input class="form-input" type="text" id="sp-name-${k}" value="${name}"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <input class="form-input" type="color" id="sp-color-${k}" value="${color}"/>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Entry Offset (pts)</label>
+            <input class="form-input" type="number" id="sp-entry-${k}" value="${p.entry_offset_pts}" min="0" step="1"/>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Stop Distance (pts)</label>
+            <input class="form-input" type="number" id="sp-stop-${k}" value="${p.stop_pts}" min="1" step="1"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Min RR</label>
+          <input class="form-input" type="number" id="sp-rr-${k}" value="${p.min_rr}" min="1" step="0.5"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <input class="form-input" type="text" id="sp-desc-${k}" value="${p.description||''}"/>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Add live calc listener
+  ['pt-loss','pt-profit','pt-contracts','pt-pointval'].forEach(id=>{
+    const e = el(id); if(e) e.addEventListener('input', updatePtCalc);
+  });
+
+  // Active toggle label sync
+  keys.forEach(k=>{
+    const chk = el('sp-active-'+k);
+    if(chk) chk.addEventListener('change', function(){
+      this.closest('.card-body').querySelector('.toggle-label').textContent = this.checked ? 'Active' : 'Disabled';
+    });
+  });
+
+  // Rules cards
+  renderRulesEditor(nqCfg.rules || []);
+  updateRulesVisibilityBtn();
+}
+
+function updatePtCalc(){
+  const loss = parseFloat(el('pt-loss').value)||0;
+  const profit = parseFloat(el('pt-profit').value)||0;
+  const contracts = parseFloat(el('pt-contracts').value)||1;
+  const pv = parseFloat(el('pt-pointval').value)||2;
+  const riskPts = loss / (pv * contracts);
+  const rewardPts = profit / (pv * contracts);
+  el('pt-calc').textContent = `= ${riskPts.toFixed(0)}pt stop · ${rewardPts.toFixed(0)}pt target per trade (${contracts}x @ $${pv}/pt)`;
+}
+
+function updateActiveCount(){
+  const cards = el('entry-type-cards');
+  if(!cards) return;
+  const total = cards.querySelectorAll('input[type="checkbox"]');
+  const active = [...total].filter(c=>c.checked).length;
+  el('strat-active-count').textContent = active + ' active';
+}
+
+function renderRulesEditor(rules){
+  el('rules-editor-count').textContent = rules.length + ' rules';
+  el('rules-editor-list').innerHTML = rules.map((r,i)=>`
+    <div class="rule-item" id="rule-item-${i}">
+      <input class="form-input rule-icon-input" type="text" value="${r.icon||''}" id="rule-icon-${i}" style="width:46px;text-align:center;padding:6px;font-size:16px"/>
+      <div class="rule-text-wrap">
+        <input class="form-input rule-title-input" type="text" value="${(r.title||'').replace(/"/g,'&quot;')}" id="rule-title-${i}" placeholder="Title"/>
+        <textarea class="form-input rule-desc-input" id="rule-text-${i}" placeholder="Description">${r.text||''}</textarea>
+      </div>
+      <button class="del-btn" onclick="deleteRule(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function deleteRule(i){
+  const nqCfg = _strategiesCache[currentTicker] || {};
+  const rules = [...(nqCfg.rules||[])];
+  rules.splice(i, 1);
+  _strategiesCache[currentTicker].rules = rules;
+  renderRulesEditor(rules);
+  el('rules-editor-count').textContent = rules.length + ' rules';
+}
+
+function addRule(){
+  const icon  = el('new-rule-icon').value.trim() || '📌';
+  const title = el('new-rule-title').value.trim();
+  const text  = el('new-rule-text').value.trim();
+  if(!title){ showToast('Enter a rule title', 'error'); return; }
+  const rules = [...((_strategiesCache[currentTicker]||{}).rules||[]), {icon, title, text}];
+  _strategiesCache[currentTicker].rules = rules;
+  renderRulesEditor(rules);
+  el('new-rule-icon').value = '';
+  el('new-rule-title').value = '';
+  el('new-rule-text').value = '';
+}
+
+// ── Save functions ──
+
+async function savePaperTrading(){
+  const tickerKey = currentTicker.toLowerCase();
+  const isTickerSpecific = _rulesCache[tickerKey] && _rulesCache[tickerKey].paper_trading;
+  const updated = {
+    ...(isTickerSpecific ? _rulesCache[tickerKey].paper_trading : _rulesCache.paper_trading),
+    target_risk_usd:         parseFloat(el('pt-loss-per-trade').value),
+    daily_profit_target_usd: parseFloat(el('pt-profit').value),
+    daily_trade_limit:       parseInt(el('pt-trade-limit').value),
+    daily_loss_limit_usd:    parseFloat(el('pt-loss').value),
+    contracts:               parseFloat(el('pt-contracts').value),
+    point_value:             parseFloat(el('pt-pointval').value),
+  };
+  if (isTickerSpecific) _rulesCache[tickerKey].paper_trading = updated;
+  else _rulesCache.paper_trading = updated;
+  await apiSave('rules', _rulesCache, 'Paper trading saved');
+}
+
+async function saveThresholds(){
+  _rulesCache.thresholds = {
+    ema_momentum_block_pts:   parseFloat(el('th-ema-block').value),
+    wide_session_pts:         parseFloat(el('th-wide-sess').value),
+    wide_session_min_rr:      parseFloat(el('th-wide-rr').value),
+    ema_proximity_pts:        parseFloat(el('th-ema-prox').value),
+    bsl_ssl_proximity_pts:    parseFloat(el('th-level-prox').value),
+    price_level_clearance_pts:parseFloat(el('th-clearance').value),
+  };
+  await apiSave('rules', _rulesCache, 'Thresholds saved');
+}
+
+async function saveEntryTypes(){
+  const tickerKey = currentTicker.toLowerCase();
+  const isTickerSpecific = _rulesCache[tickerKey] && _rulesCache[tickerKey].stop_params;
+  const sp = isTickerSpecific ? {..._rulesCache[tickerKey].stop_params} : {...(_rulesCache.stop_params || {})};
+  const strategies = {};
+  const colors = {};
+  const nqCfg = _strategiesCache[currentTicker] || {};
+  const keys = Object.keys(nqCfg.strategies || {});
+  keys.forEach(k=>{
+    strategies[k] = el('sp-name-'+k)?.value || nqCfg.strategies[k];
+    colors[k]     = el('sp-color-'+k)?.value || (nqCfg.colors||{})[k];
+    sp[k] = {
+      ...(sp[k]||{}),
+      active:           el('sp-active-'+k)?.checked === true,
+      entry_offset_pts: parseFloat(el('sp-entry-'+k)?.value||12),
+      stop_pts:         parseFloat(el('sp-stop-'+k)?.value||12),
+      min_rr:           parseFloat(el('sp-rr-'+k)?.value||3),
+      description:      el('sp-desc-'+k)?.value || '',
+    };
+  });
+  if(isTickerSpecific) _rulesCache[tickerKey].stop_params = sp;
+  else _rulesCache.stop_params = sp;
+  _strategiesCache[currentTicker] = {...nqCfg, strategies, colors};
+  await Promise.all([
+    apiSave('rules', _rulesCache),
+    apiSave('strategies', _strategiesCache),
+  ]);
+  showToast('Entry types saved', 'success');
+  // Re-render only if already on live/backtest tab (strategy tab would flash dashboard-body)
+  if(currentTab === 'live' || currentTab === 'backtest') render();
+}
+
+async function saveRulesCards(){
+  const nqCfg = _strategiesCache[currentTicker] || {};
+  const rules = (nqCfg.rules||[]).map((_,i)=>({
+    icon:  el('rule-icon-'+i)?.value  || '',
+    title: el('rule-title-'+i)?.value || '',
+    text:  el('rule-text-'+i)?.value  || '',
+  }));
+  _strategiesCache[currentTicker].rules = rules;
+  await apiSave('strategies', _strategiesCache, 'Rules saved');
+}
+
+async function addNewStrategy(){
+  const key   = (el('new-strat-key').value||'').replace(/\s+/g,'_').toLowerCase();
+  const name  = el('new-strat-name').value.trim();
+  const color = el('new-strat-color').value;
+  const rr    = parseFloat(el('new-strat-rr').value)||3;
+  const stop  = parseFloat(el('new-strat-stop').value)||12;
+  const desc  = el('new-strat-desc').value.trim();
+  if(!key||!name){ showToast('Key and name required', 'error'); return; }
+  _strategiesCache[currentTicker].strategies[key] = name;
+  _strategiesCache[currentTicker].colors[key]     = color;
+  _rulesCache.stop_params[key] = { entry_offset_pts:0, stop_pts:stop, min_rr:rr, active:true, description:desc };
+  await Promise.all([
+    apiSave('rules', _rulesCache),
+    apiSave('strategies', _strategiesCache),
+  ]);
+  showToast(`"${name}" added — tell Claude the entry conditions to activate`, 'success');
+  el('new-strat-key').value=''; el('new-strat-name').value=''; el('new-strat-desc').value='';
+  loadStrategyTab();
+}
+
+async function apiSave(file, data, msg){
+  try {
+    const r = await fetch('/api/'+file, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    if(!r.ok) throw new Error();
+    if(msg) showToast(msg, 'success');
+  } catch(e){
+    showToast('Save failed — is node dashboard.js running?', 'error');
+  }
+}
+
+// ── Toast ──
+let _toastTimer;
+function showToast(msg, type='success'){
+  const t = el('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(()=> t.classList.remove('show'), 2800);
+}
+
+// ─── LEARNING TAB ─────────────────────────────────────────────────────────────
+function renderPipeline(){
+  const enabledCfg = (_rulesCache && _rulesCache.agent_enabled) || {};
+  const agentCfg = {
+    NQ:   { nodeClass:'pn-signal', nodeId:'node-mnq-signal', icon:'⚡', name:'MNQ Signal',  meta:'9:45 AM–12:00 PM EDT<br>every 3 min',   statusKey:'mnq_signal_agent',  enabledKey:'mnq_signal'  },
+    GOLD: { nodeClass:'pn-gold',   nodeId:'node-gold-signal', icon:'🥇', name:'Gold Signal', meta:'8:00 PM–12:00 AM EDT<br>every 10 min',  statusKey:'gold_signal_agent', enabledKey:'gold_signal' },
+    BTC:  { nodeClass:'pn-signal', nodeId:'node-btc-signal',  icon:'₿',  name:'BTC Signal',  meta:'24h<br>every 15 min',                    statusKey:'btc_signal_agent',  enabledKey:'btc_signal'  },
+  };
+  const agent = agentCfg[currentTicker] || agentCfg.NQ;
+
+  const connector = (delay, label) => `
+    <div class="pipeline-connector">
+      <div class="pipeline-line"><div class="pipeline-dot" style="animation-delay:${delay}s"></div></div>
+      <div class="pipeline-connector-label">${label}</div>
+    </div>`;
+
+  const node = (cls, id, icon, name, meta, tag, enabledKey) => {
+    const isToggleable = !!enabledKey;
+    const enabled = isToggleable ? (enabledCfg[enabledKey] !== false) : true;
+    const badge = isToggleable
+      ? `<div class="agent-toggle ${enabled?'enabled':'disabled'}" onclick="toggleAgent('${enabledKey}')">${enabled ? '● Enabled' : '○ Disabled'}</div>`
+      : '';
+    return `
+    <div class="pipeline-node ${cls} ${isToggleable && !enabled ? 'agent-disabled' : ''}" id="${id}">
+      <div class="pipeline-node-icon">${icon}</div>
+      <div class="pipeline-node-name">${name}</div>
+      <div class="pipeline-node-meta">${meta}</div>
+      <div class="pipeline-node-tag">${tag}</div>
+      ${badge}
+    </div>`;
+  };
+
+  const signalEnabled = enabledCfg[agent.enabledKey] !== false;
+
+  el('pipeline-row').innerHTML =
+    node(agent.nodeClass, agent.nodeId, agent.icon, agent.name, agent.meta, 'Agent 1', agent.enabledKey) +
+    connector(0.3, 'trade logged') +
+    node('pn-monitor', 'node-monitor', '👁', 'Trade Monitor', currentTicker === 'GOLD' ? '8:00 PM–12:00 AM EDT<br>every 5 min' : '9:45 AM–12:00 PM EDT<br>every 5 min', 'Agent 2', null) +
+    connector(0.6, 'trade closed') +
+    node('pn-learning', 'node-learning', '🧠', 'Learning Agent', currentTicker === 'GOLD' ? '12:00 AM EDT<br>auto + manual' : '12:00 PM EDT<br>auto + manual', 'Agent 3', null) +
+    connector(1.2, 'stats rebuilt') +
+    node('pn-output', 'node-output', '📊', 'learning.json', 'persistent · grows<br>every session', 'Output', null);
+
+  // Grey out entire pipeline if signal agent is disabled
+  el('pipeline-row').classList.toggle('pipeline-shutdown', !signalEnabled);
+
+  // Unconfigured ticker overlay
+  const cfg = (strategies && strategies[currentTicker]) || {};
+  const isConfigured = cfg.strategies && Object.keys(cfg.strategies).length > 0;
+  el('pipeline-row').style.filter = isConfigured ? '' : 'blur(2px) grayscale(1)';
+  el('pipeline-row').style.opacity = isConfigured ? '' : '0.4';
+  const overlay = el('pipeline-unconfigured');
+  if(overlay){
+    overlay.style.display = isConfigured ? 'none' : 'flex';
+    const lbl = el('pipeline-unconfigured-label');
+    if(lbl) lbl.textContent = currentTicker + ' — Not Configured';
+  }
+
+  checkAgentStatus();
+}
+
+async function toggleAgent(key){
+  if(!_rulesCache) return;
+  if(!_rulesCache.agent_enabled) _rulesCache.agent_enabled = {};
+  const current = _rulesCache.agent_enabled[key] === true;
+  _rulesCache.agent_enabled[key] = !current;
+  await apiSave('rules', _rulesCache, `${key.replace('_',' ')} ${!current ? 'enabled' : 'disabled'}`);
+  renderPipeline();
+}
+
+function getActiveLearningData(){
+  if(currentTicker === 'GOLD') return goldLearningData;
+  if(currentTicker === 'BTC')  return btcLearningData;
+  return learningData;
+}
+
+function renderLearning(){
+  renderPipeline();
+  const agentKey = currentTicker === 'NQ' ? 'mnq_signal' : currentTicker.toLowerCase() + '_signal';
+  const agentEnabled = !_rulesCache || !_rulesCache.agent_enabled || _rulesCache.agent_enabled[agentKey] !== false;
+  const activeData = getActiveLearningData();
+  const hasData = agentEnabled && activeData && activeData.stats;
+  el('learn-empty').style.display    = hasData ? 'none'  : 'block';
+  el('learn-data-body').style.display= hasData ? 'block' : 'none';
+  if(!hasData) return;
+
+  const d = activeData;
+  const s = d.stats||{};
+  const ov = s.overall||{};
+
+  // ── Stats row ──
+  const liveN  = (s.live_only||{}).trades  || 0;
+  const vCount = (d.violations||[]).length;
+  const lastRun = d.last_updated || '—';
+  el('learn-stats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Closed</div>
+      <div class="stat-value accent">${ov.total||0}</div>
+      <div class="stat-sub">${liveN} live</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">All-Time WR</div>
+      <div class="stat-value ${(ov.win_rate||0)>=0.5?'green':(ov.win_rate||0)>=0.4?'amber':'red'}">${ov.total>0?Math.round((ov.win_rate||0)*100)+'%':'—'}</div>
+      <div class="stat-sub">${ov.wins||0}W · ${ov.losses||0}L · ${ov.partials||0}P</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg PnL</div>
+      <div class="stat-value ${(ov.avg_pnl||0)>=0?'green':'red'}">${ov.avg_pnl!=null?((ov.avg_pnl>=0?'+':'')+ov.avg_pnl.toFixed(0)):'—'}</div>
+      <div class="stat-sub">per closed trade</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total PnL</div>
+      <div class="stat-value ${(ov.total_pnl||0)>=0?'green':'red'}">${ov.total_pnl!=null?((ov.total_pnl>=0?'+':'')+Math.round(ov.total_pnl)):'—'}</div>
+      <div class="stat-sub">cumulative</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Violations</div>
+      <div class="stat-value ${vCount>0?'red':'green'}">${vCount}</div>
+      <div class="stat-sub">${lastRun.split(' ')[0]||'—'}</div>
+    </div>
+  `;
+
+  // ── Breakdown grid ──
+  function breakdownCard(title, items){
+    const rows = items.map(([label, grp])=>{
+      if(!grp||grp.note) return `<div class="breakdown-item"><span class="breakdown-label">${label}</span><span class="nsuff">n/a</span></div>`;
+      const wr = grp.win_rate!=null ? Math.round(grp.win_rate*100) : 0;
+      const color = wr>=60?'var(--green)':wr>=40?'var(--amber)':'var(--red)';
+      return `
+        <div class="breakdown-item">
+          <span class="breakdown-label">${label}</span>
+          <div class="breakdown-bar-wrap"><div class="breakdown-bar" style="width:${wr}%;background:${color}"></div></div>
+          <span class="breakdown-wr" style="color:${color}">${wr}%</span>
+          <span class="breakdown-n">n=${grp.trades}</span>
+        </div>`;
+    }).join('');
+    return `<div class="card"><div class="card-header"><span class="card-title">${title}</span></div><div class="card-body">${rows}</div></div>`;
+  }
+
+  const byEntry = s.by_entry_type||{};
+  const byDir   = s.by_direction||{};
+  const byEma   = s.by_ema_position||{};
+  const bySess  = s.by_session_range||{};
+
+  const tickerCfg = (_strategiesCache && _strategiesCache[currentTicker]) || {};
+  const disabled = getDisabledSetups();
+  const setupKeys = Object.keys(tickerCfg.strategies || {}).filter(k => !disabled.has(k));
+  const setupRows = setupKeys.map(k => [tickerCfg.strategies[k] || k, byEntry[k]]);
+
+  el('learn-breakdown').innerHTML =
+    breakdownCard('By Setup', setupRows.length ? setupRows : [['No setups configured', null]]) +
+    breakdownCard('By Direction & Range', [
+      ['Long (bullish)',  byDir.LONG],
+      ['Short (bearish)', byDir.SHORT],
+      ['Tight range (<100)', bySess.tight],
+      ['Normal range',      bySess.normal],
+      ['Wide range (>200)', bySess.wide],
+    ]) +
+    breakdownCard('By EMA Position', [
+      ['Above EMA',  byEma.above_ema],
+      ['At EMA',     byEma.at_ema],
+      ['Below EMA',  byEma.below_ema],
+      ['Inside EMA', byEma.inside_ema],
+    ]);
+
+  // ── Insights ──
+  const insights = d.insights||[];
+  el('learn-insights-count').textContent = insights.length;
+  el('learn-insights-body').innerHTML = insights.length
+    ? insights.map((ins,i)=>`
+        <div class="learn-insight-item">
+          <div class="learn-insight-num">${i+1}</div>
+          <div class="learn-insight-text">${ins}</div>
+        </div>`).join('')
+    : '<div class="empty-state">No insights yet</div>';
+
+  // ── Tweaks ──
+  const tweaks = d.suggested_rule_tweaks||[];
+  el('learn-tweaks-count').textContent = tweaks.length;
+  el('learn-tweaks-body').innerHTML = tweaks.length
+    ? tweaks.map(tw=>`
+        <div class="tweak-item">
+          <div class="tweak-header">
+            <span class="tweak-confidence ${tw.confidence||'low'}">${tw.confidence||'low'} confidence</span>
+            <span class="tweak-n">n=${tw.sample_size||'?'}</span>
+          </div>
+          <div class="tweak-current">"${(tw.rule||'').slice(0,80)}${(tw.rule||'').length>80?'…':''}"</div>
+          <div class="tweak-suggestion">→ ${tw.suggestion}</div>
+          <div class="tweak-basis">${tw.basis}</div>
+        </div>`).join('')
+    : '<div class="empty-state">No tweaks suggested yet</div>';
+
+  // ── Violations ──
+  const violations = d.violations||[];
+  el('learn-violations-count').textContent = violations.length;
+  el('learn-violations-body').innerHTML = violations.length
+    ? violations.map(v=>{
+        const pnl = parseFloat(v.pnl);
+        const pnlStr = isNaN(pnl)?'—':(pnl>=0?'+':'')+pnl.toFixed(1);
+        const pnlColor = pnl<0?'var(--red)':pnl>0?'var(--green)':'var(--text-dim)';
+        return `
+          <div class="violation-item">
+            <div>
+              <span class="pill ${v.result||'loss'}" style="font-size:10px">${v.result||'?'}</span>
+            </div>
+            <div class="violation-body">
+              <div class="violation-rule">⚠ ${v.rule}</div>
+              <div class="violation-note">${v.note||''}</div>
+              <div class="violation-meta">${v.date} · ${v.trade||''}</div>
+            </div>
+            <div class="violation-pnl" style="color:${pnlColor}">${pnlStr}</div>
+          </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:20px">No violations — clean trading</div>';
+
+  // ── Session history ──
+  const sessions = (d.session_history||[]).slice().reverse();
+  el('learn-sessions-count').textContent = sessions.length+' sessions';
+  el('learn-sessions-empty').style.display = sessions.length?'none':'block';
+  el('learn-sessions-tbody').innerHTML = sessions.map((sess,i)=>{
+    const pnl = parseFloat(sess.net_pnl)||0;
+    const pnlStr = (pnl>=0?'+':'')+pnl.toFixed(1);
+    const pnlColor = pnl>0?'var(--green)':pnl<0?'var(--red)':'var(--text-dim)';
+    const hasDetail = (sess.insights||[]).length || (sess.violations||[]).length || (sess.suggested_rule_tweaks||[]).length;
+    return `<tr ondblclick="openSessionDetail(${i})" title="${hasDetail?'Double-click to view insights & analysis':''}">
+      <td class="mono">${sess.date}${hasDetail?' <span style="color:var(--accent);font-size:10px">●</span>':''}</td>
+      <td><span class="pill ${sess.mode==='live'?'live':'backtest'}">${sess.mode||'—'}</span></td>
+      <td class="mono">${sess.trades||0}</td>
+      <td class="mono" style="color:var(--green)">${sess.wins||0}</td>
+      <td class="mono" style="color:var(--red)">${sess.losses||0}</td>
+      <td class="mono" style="color:${pnlColor};font-weight:600">${pnlStr}</td>
+      <td style="font-size:11px;color:var(--text-dim);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${sess.notes||''}">${sess.notes||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── ADD TICKER ───────────────────────────────────────────────────────────────
+function openAddTicker(){
+  el('at-key').value=''; el('at-label').value='';
+  el('at-instrument').value=''; el('at-timeframe').value='3min & 1H';
+  el('add-ticker-modal').classList.add('active');
+  setTimeout(()=>el('at-key').focus(), 50);
+}
+function closeAddTicker(e){ if(e.target===el('add-ticker-modal')) closeAddTickerDirect(); }
+function closeAddTickerDirect(){ el('add-ticker-modal').classList.remove('active'); }
+
+// ─── SESSION DETAIL MODAL ─────────────────────────────────────────────────────
+let _sessionCache = [];
+
+function openSessionDetail(idx){
+  const sessions = ((getActiveLearningData()&&getActiveLearningData().session_history)||[]).slice().reverse();
+  const sess = sessions[idx];
+  if(!sess) return;
+
+  const pnl = parseFloat(sess.net_pnl)||0;
+  const pnlStr = (pnl>=0?'+':'')+pnl.toFixed(1);
+  const pnlColor = pnl>0?'var(--green)':pnl<0?'var(--red)':'var(--text-dim)';
+
+  el('sd-title').textContent = 'Session — '+sess.date;
+  el('sd-meta').innerHTML = `
+    <span class="pill ${sess.mode==='live'?'live':'backtest'}">${sess.mode||'—'}</span>
+    <span class="pill" style="background:rgba(255,255,255,0.04);color:var(--text-secondary)">${sess.trades||0} trades · ${sess.wins||0}W ${sess.losses||0}L</span>
+    <span class="mono" style="font-size:12px;font-weight:700;color:${pnlColor}">${pnlStr} pts</span>`;
+
+  // Page 1 — Insights
+  const insights = sess.insights||[];
+  el('sd-insights-body').innerHTML = insights.length
+    ? insights.map((ins,i)=>`
+        <div class="sd-insight-item">
+          <div class="sd-insight-num">${i+1}</div>
+          <div class="sd-insight-text">${ins}</div>
+        </div>`).join('')
+    : '<div class="empty-state">No insights recorded for this session</div>';
+
+  // Page 2 — Tweaks
+  const tweaks = sess.suggested_rule_tweaks||[];
+  el('sd-tweaks-body').innerHTML = tweaks.length
+    ? tweaks.map(tw=>`
+        <div class="sd-tweak-item">
+          <div class="sd-tweak-rule">Current: ${tw.rule||'—'}</div>
+          <div class="sd-tweak-suggestion">${tw.suggestion||'—'}</div>
+          <div class="sd-tweak-meta">
+            <span class="pill" style="background:rgba(255,255,255,0.04);color:var(--text-dim)">n=${tw.sample_size||0}</span>
+            <span class="pill" style="background:rgba(255,255,255,0.04);color:var(--text-dim)">${tw.confidence||'low'} confidence</span>
+          </div>
+        </div>`).join('')
+    : '<div class="empty-state" style="padding:12px 0">No tweaks suggested</div>';
+
+  // Page 2 — Violations
+  const violations = sess.violations||[];
+  el('sd-violations-body').innerHTML = violations.length
+    ? violations.map(v=>{
+        const vPnl = parseFloat(v.pnl);
+        const vStr = isNaN(vPnl)?'—':(vPnl>=0?'+':'')+vPnl.toFixed(1);
+        const vColor = vPnl<0?'var(--red)':vPnl>0?'var(--green)':'var(--text-dim)';
+        return `<div class="sd-violation-item">
+          <div class="sd-violation-left">
+            <div class="sd-violation-trade">${v.trade||'—'}</div>
+            <div class="sd-violation-rule">⚠ ${v.rule||'—'}</div>
+            <div class="sd-violation-note">${v.note||''}</div>
+          </div>
+          <div class="sd-violation-pnl" style="color:${vColor}">${vStr}</div>
+        </div>`;
+      }).join('')
+    : '<div class="empty-state" style="padding:12px 0">No violations — clean trading</div>';
+
+  setSessionPage(1);
+  el('session-detail-modal').classList.add('active');
+}
+
+function closeSessionDetail(e){ if(e.target===el('session-detail-modal')) closeSessionDetailDirect(); }
+function closeSessionDetailDirect(){ el('session-detail-modal').classList.remove('active'); }
+
+function setSessionPage(n){
+  document.querySelectorAll('.sd-tab').forEach((t,i)=>t.classList.toggle('active', i===n-1));
+  document.querySelectorAll('.sd-page').forEach((p,i)=>p.classList.toggle('active', i===n-1));
+}
+
+async function saveAddTicker(){
+  const key        = el('at-key').value.trim().toUpperCase();
+  const label      = el('at-label').value.trim() || key + ' · Strategy';
+  const instrument = el('at-instrument').value.trim();
+  const timeframe  = el('at-timeframe').value.trim() || '3min & 1H';
+
+  if(!key){ showToast('Ticker key required', 'error'); return; }
+  if(strategies[key]){ showToast(`${key} already exists`, 'error'); return; }
+
+  // Load latest strategies.json from server, add new ticker, save back
+  try {
+    const r = await fetch('/api/strategies');
+    if(!r.ok) throw new Error();
+    const data = await r.json();
+    data[key] = { label, instrument, timeframe, strategies:{}, colors:{}, rules:[] };
+    const save = await fetch('/api/strategies', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(data)
+    });
+    if(!save.ok) throw new Error();
+    closeAddTickerDirect();
+    showToast(`${key} added — go to Strategy tab to configure`, 'success');
+    await loadAll();
+    setTicker(key);
+  } catch(e){
+    showToast('Save failed — is node dashboard.js running?', 'error');
+  }
+}
+
+// ─── AGENT PIPELINE STATE ─────────────────────────────────────────────────────
+// Sequential pipeline: Signal → Trade Monitor → Learning Agent → Output
+// Each stage only glows when it is the active stage.
+
+async function checkAgentStatus() {
+  try {
+    const r = await fetch('agent_status.json?' + Date.now());
+    if (!r.ok) return;
+    const status = await r.json();
+
+    const now      = new Date();
+    const nowMs    = now.getTime();
+    const today    = now.toISOString().slice(0, 10);
+
+    // EDT offset (UTC-4), normalized 0–1439
+    const edtRaw = (now.getUTCHours() - 4) * 60 + now.getUTCMinutes();
+    const edtMin = ((edtRaw % 1440) + 1440) % 1440;
+
+    const isGold = currentTicker === 'GOLD';
+
+    // Scan windows
+    const inNQWindow   = edtMin >= (9*60+45) && edtMin < 12*60;
+    const inGoldWindow = edtMin >= (20*60) || edtMin < 0;  // 8 PM–midnight
+
+    // Open trades by ticker
+    const hasOpenNQ   = allTrades.some(t => t.date === today && t.mode === 'live' && t.ticker !== 'GOLD' && (t.result === 'open' || t.result === 'partial_mid'));
+    const hasOpenGold = allTrades.some(t => t.date === today && t.mode === 'live' && t.ticker === 'GOLD' && (t.result === 'open' || t.result === 'partial_mid'));
+    const hasOpenTrade = isGold ? hasOpenGold : hasOpenNQ;
+
+    // Learning agent timestamp
+    const learningTs     = status.learning_agent ? new Date(status.learning_agent) : null;
+    const learningToday  = learningTs && learningTs.toISOString().slice(0,10) === today;
+    const learningRecent = learningTs && (nowMs - learningTs.getTime()) < 30*60*1000;
+
+    // Signal enabled checks
+    const nqEnabled   = _rulesCache && _rulesCache.agent_enabled && _rulesCache.agent_enabled.mnq_signal  !== false;
+    const goldEnabled = _rulesCache && _rulesCache.agent_enabled && _rulesCache.agent_enabled.gold_signal !== false;
+
+    // ── NQ pipeline ──
+    const nqSignalActive   = nqEnabled   && inNQWindow   && !hasOpenNQ   && !learningToday;
+    const nqMonitorActive  = hasOpenNQ;
+    const nqLearningActive = !isGold && learningRecent && !hasOpenNQ;
+    const nqOutputActive   = !isGold && learningToday && edtMin >= (12*60+5) && edtMin < (12*60+10);
+
+    // ── Gold pipeline ──
+    const goldScanActive      = goldEnabled && inGoldWindow && !hasOpenGold;
+    const goldMonitorActive   = hasOpenGold;
+    const goldLearningActive  = isGold && learningRecent && !hasOpenGold;
+    const goldOutputActive    = isGold && learningToday && edtMin >= 5 && edtMin < 10;
+
+    // Apply to nodes (only the visible ticker's signal node matters for signal/monitor/learning/output)
+    const nodeNQSignal   = document.getElementById('node-mnq-signal');
+    const nodeGoldSignal = document.getElementById('node-gold-signal');
+    const nodeMonitor    = document.getElementById('node-monitor');
+    const nodeLearning   = document.getElementById('node-learning');
+    const nodeOutput     = document.getElementById('node-output');
+
+    if (nodeNQSignal)   nodeNQSignal.classList.toggle('agent-active',   nqSignalActive);
+    if (nodeGoldSignal) nodeGoldSignal.classList.toggle('agent-active', goldScanActive);
+    if (nodeMonitor)    nodeMonitor.classList.toggle('agent-active',    isGold ? goldMonitorActive  : nqMonitorActive);
+    if (nodeLearning)   nodeLearning.classList.toggle('agent-active',   isGold ? goldLearningActive : nqLearningActive);
+    if (nodeOutput)     nodeOutput.classList.toggle('agent-active',     isGold ? goldOutputActive   : nqOutputActive);
+  } catch(e) {}
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+loadAll();
+checkTVStatus();
+checkAgentStatus();
+setInterval(loadAll, 30000);
+setInterval(checkTVStatus, 15000);
+setInterval(checkAgentStatus, 10000); // agent pulse check every 10s
+</script>
+</body>
+</html>
