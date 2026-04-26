@@ -59,6 +59,16 @@ app.post('/api/:file', (req, res) => {
   }
 });
 
+// Version endpoint — reads from electron/package.json
+app.get('/api/version', (_req, res) => {
+  try {
+    const pkg = JSON.parse(readFileSync(join(__dirname, 'electron', 'package.json'), 'utf8'));
+    res.json({ version: pkg.version });
+  } catch {
+    res.json({ version: '1.0' });
+  }
+});
+
 // Static files last (serves dashboard HTML, CSVs, screenshots, etc.)
 app.use(express.static(__dirname));
 
