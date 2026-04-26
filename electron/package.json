@@ -29,11 +29,26 @@
     ],
     "mac": {
       "category": "public.app-category.finance",
-      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
       "icon": "icons/icon.icns"
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "icons/icon.ico"
     },
     "nsis": {
@@ -41,10 +56,19 @@
       "installerIcon": "icons/icon.ico",
       "uninstallerIcon": "icons/icon.ico",
       "shortcutName": "ALA Trader"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Tychan22",
+      "repo": "ALA",
+      "private": true
     }
   },
   "devDependencies": {
     "electron": "^35.0.0",
     "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.3"
   }
 }

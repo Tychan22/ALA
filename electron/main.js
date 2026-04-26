@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const { spawn, exec }  = require('child_process');
 const path             = require('path');
 const fs               = require('fs');
 const http             = require('http');
+const { autoUpdater }  = require('electron-updater');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 // In production the parent project lands at resources/app/ via extraResources
@@ -201,12 +202,30 @@ ipcMain.on('login-success', async () => {
 ipcMain.on('quit-app', () => app.quit());
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
+function setupAutoUpdater() {
+  if (!app.isPackaged) return; // skip in dev
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Ready',
+      message: 'A new version of ALA Trader has been downloaded. Restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+  autoUpdater.checkForUpdates().catch(err => console.log('[ALA] Update check failed:', err.message));
+}
+
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   patchAgentPaths();
   startDashboard();
   launchTradingView();
   createLoginWindow();
+  setupAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
