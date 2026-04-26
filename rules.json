@@ -1,0 +1,481 @@
+{
+  "agent_enabled": {
+    "mnq_signal": true,
+    "gold_signal": true,
+    "trade_monitor": true,
+    "learning_agent": true,
+    "ilm_signal": true,
+    "orb_signal": true
+  },
+  "alerts": {
+    "discord_webhook": "https://discord.com/api/webhooks/1489900062854353048/jw5y0GGrc1aD4ohknWdfXWWRMjUE1OfT4gmDjevCz7Z6m_oNo6iReCdQR0HOCcUxkaRm",
+    "min_rr": 2,
+    "alert_on_setup": true
+  },
+  "logging": {
+    "backtest_csv": "backtest_log.csv",
+    "live_csv": "live_log.csv",
+    "fields": [
+      "date",
+      "timeframe",
+      "mode",
+      "bias",
+      "ema_position",
+      "bsl",
+      "ssl",
+      "midpoint",
+      "entry_type",
+      "entry",
+      "stop",
+      "target",
+      "rr",
+      "result",
+      "pts_captured",
+      "notes"
+    ]
+  },
+  "mnq": {
+    "symbol": "IG:NASDAQ",
+    "timeframe": "3",
+    "context_timeframe": "15",
+    "note": "Change symbol to swap chart. e.g. CME_MINI_DL:MNQ1! for micros, IG:NASDAQ for CFD.",
+    "paper_trading": {
+      "enabled": true,
+      "contract": "NQ",
+      "contracts": "auto",
+      "point_value": 1,
+      "target_risk_usd": 500,
+      "daily_limits_enabled": true,
+      "daily_trade_limit": 2,
+      "daily_loss_limit_usd": 1000,
+      "daily_profit_target_usd": 1000,
+      "note": "IG:NASDAQ CFD ~$1/point. contracts=auto: floor(target_risk_usd / (sl_pts * point_value)). Max 2 trades/day."
+    },
+    "stop_params": {
+      "res_breakout": {
+        "entry_offset_pts": 5,
+        "stop_pts": 10,
+        "min_rr": 2,
+        "active": true,
+        "description": "Long breakout above resistance — body close above level"
+      },
+      "support_sweep": {
+        "entry_offset_pts": 5,
+        "stop_pts": 10,
+        "min_rr": 2,
+        "active": true,
+        "description": "Long from support sweep — wick below, spike back above"
+      },
+      "double_top": {
+        "entry_offset_pts": 5,
+        "stop_pts": 10,
+        "min_rr": 2,
+        "active": true,
+        "description": "Short from double top — two resistance taps, second fails"
+      },
+      "support_break": {
+        "entry_offset_pts": 5,
+        "stop_pts": 10,
+        "min_rr": 2,
+        "active": false,
+        "description": "Short breakdown below support — strong bear candle body close below level"
+      }
+    },
+    "thresholds": {
+      "ema_momentum_block_pts": 150,
+      "wide_session_pts": 200,
+      "wide_session_min_rr": 4,
+      "ema_proximity_pts": 15,
+      "bsl_ssl_proximity_pts": 20,
+      "price_level_clearance_pts": 2
+    },
+    "bias_criteria": {
+      "bullish": [
+        "Price is above the EMA band (MA Top / MA Bottom)",
+        "Strong bullish reaction candle at the NY open (high volume, closes near high)",
+        "Price swept a sell-side liquidity level (SSL) and reversed up before 10 AM EDT",
+        "Asia or London session low is unswept — draw is up to BSL"
+      ],
+      "bearish": [
+        "Price is below the EMA band (MA Top / MA Bottom)",
+        "Strong bearish reaction candle at the NY open (high volume, closes near low)",
+        "Price swept a buy-side liquidity level (BSL) and reversed down before 10 AM EDT",
+        "Asia or London session high is unswept — draw is down to SSL"
+      ],
+      "neutral": [
+        "Price is inside the EMA band (between MA Top and MA Bottom)",
+        "Open candle is indecisive (small body, large wicks both sides)",
+        "No clear liquidity sweep at the open",
+        "No unswept session levels visible on either side"
+      ]
+    },
+    "session_levels": {
+      "priority_order": [
+        "Asia H/L",
+        "London H/L",
+        "NYAM H/L"
+      ],
+      "rule": "Unswept session highs = BSL. Unswept session lows = SSL. Closest unswept level is the primary draw on liquidity.",
+      "asia": "AS.H and AS.L from ICT Killzones indicator",
+      "london": "LO.H and LO.L",
+      "nyam": "NYAM.H and NYAM.L — marks NY AM session range (9:30–12:00 EDT)",
+      "bias_override": "If an unswept Asia or London level exists, it overrides BSL/SSL direction"
+    },
+    "stop_logic": {
+      "entry_at_bsl_or_ssl": {
+        "description": "Entering at the BSL or SSL extreme after a confirmed sweep and rejection",
+        "stop_placement": "10-15pts beyond the swept level",
+        "target": "Opposite session level",
+        "partial_exit": "50% at midpoint, move stop to breakeven",
+        "min_rr": 3
+      },
+      "entry_at_ema_band": {
+        "description": "Entering at EMA band when price pulls back to it mid-session",
+        "stop_placement": "10-15pts below EMA Bottom (longs) or above EMA Top (shorts)",
+        "target": "Nearest unswept session high or low",
+        "partial_exit": "50% at midpoint between EMA and target",
+        "min_rr": 3
+      },
+      "entry_at_midpoint": {
+        "description": "Re-entry at midpoint after partial exit",
+        "stop_placement": "Back through nearest BSL or SSL",
+        "target": "Opposite extreme level",
+        "partial_exit": "Hold full size",
+        "min_rr": 2
+      },
+      "avoid": [
+        "Do NOT short when price is 150+pts above EMA band",
+        "Do NOT fade a candle that sweeps both BSL and SSL on volume 2x+ average",
+        "Do NOT enter at 10 AM if the session has already moved 200+pts"
+      ]
+    },
+    "risk_rules": [
+      "Only take trades where R:R meets the minimum for the entry type",
+      "Maximum 2 trades per day",
+      "Maximum 2 open positions at once",
+      "Draw on liquidity target must be identified before entering",
+      "Midpoint = breakeven level and partial exit (50% off)",
+      "Only trade in NY AM session (9:45 AM – 12:00 PM EDT)"
+    ],
+    "draw_on_liquidity": {
+      "bsl": "Unswept session high — buy-side liquidity above price",
+      "ssl": "Unswept session low — sell-side liquidity below price",
+      "midpoint": "(BSL + SSL) / 2 — partial exit, breakeven, re-entry level",
+      "ema_band": "MA Top and MA Bottom from Play₿it EMA v2 — dynamic support/resistance and regime filter"
+    }
+  },
+  "gold": {
+    "symbol": "FOREXCOM:XAUUSD",
+    "timeframe": "15",
+    "note": "Change symbol to swap Gold chart. e.g. FOREXCOM:XAUUSD, TVC:GOLD, OANDA:XAUUSD.",
+    "session": {
+      "open_edt": "18:00",
+      "close_edt": "16:00",
+      "note": "Gold trades 6 PM EDT to 4 PM EDT next day (22h). Closed window: 4:01–5:59 PM EDT."
+    },
+    "paper_trading": {
+      "enabled": true,
+      "contract": "XAUUSD",
+      "contracts": "auto",
+      "point_value": 1,
+      "daily_trade_limit": 2,
+      "daily_loss_limit_usd": 1000,
+      "daily_profit_target_usd": 1000,
+      "target_risk_usd": 500,
+      "note": "XAU demo (trades MGC live). contracts=auto: floor(target_risk_usd / (sl_pts * point_value))."
+    },
+    "stop_params": {
+      "trendline_breakout_long": {
+        "entry_offset_pts": 0.5,
+        "stop_pts": 1,
+        "min_rr": 3,
+        "active": true,
+        "description": "Long above broken downtrend line — body close above wick-based trendline"
+      },
+      "trendline_breakout_short": {
+        "entry_offset_pts": 0.5,
+        "stop_pts": 1,
+        "min_rr": 3,
+        "active": true,
+        "description": "Short below broken uptrend line — body close below wick-based trendline"
+      },
+      "ema_breakout": {
+        "entry_offset_pts": 0.5,
+        "stop_pts": 1,
+        "min_rr": 3,
+        "active": true,
+        "description": "Long from EMA band support — strong bull body at MA Top/Bottom, EMA sloping bullish"
+      }
+    },
+    "thresholds": {
+      "pivot_lookback_bars": 2,
+      "max_trendline_age_bars": 60,
+      "accumulation_bars": 8,
+      "accumulation_range_pct": 0.4,
+      "accumulation_proximity_pts": 30,
+      "body_ratio_min": 0.6,
+      "min_rr": 3
+    }
+  },
+  "stop_params": {
+    "res_breakout": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "support_sweep": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "double_top": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "support_break": {
+      "active": false,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "ilm_long": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "ilm_short": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "classic_orb_long": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "classic_orb_short": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "revised_fvg_long": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    },
+    "revised_fvg_short": {
+      "active": true,
+      "entry_offset_pts": 12,
+      "stop_pts": 12,
+      "min_rr": 3,
+      "description": ""
+    }
+  },
+  "ilm": {
+    "symbol": "IG:NASDAQ",
+    "timeframe": "5",
+    "note": "ILM/iFVG Strategy v22.5 — Inducement Liquidity Model. Sweep a significant level → FVG forms → FVG inverts → trade the reversal.",
+    "paper_trading": {
+      "enabled": true,
+      "contract": "NQ",
+      "contracts": "auto",
+      "point_value": 1,
+      "target_risk_usd": 500,
+      "daily_trade_limit": 2,
+      "daily_loss_limit_usd": 1000,
+      "daily_profit_target_usd": 1000
+    },
+    "stop_params": {
+      "ilm_long": {
+        "atr_length": 12,
+        "atr_sl_multiplier": 1.4,
+        "partial_tp_r": 2,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Bearish FVG → Bullish iFVG → LONG. Triggered after a bearish sweep of a key low (PDL/session low). FVG inverts bullish within 25 bars."
+      },
+      "ilm_short": {
+        "atr_length": 12,
+        "atr_sl_multiplier": 1.4,
+        "partial_tp_r": 2,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Bullish FVG → Bearish iFVG → SHORT. Triggered after a bullish sweep of a key high (PDH/session high). FVG inverts bearish within 25 bars."
+      }
+    },
+    "thresholds": {
+      "sweep_timeout_bars": 25,
+      "fvg_inversion_lookback_bars": 7,
+      "max_fvgs_tracked": 8,
+      "sweep_cutoff_major": 2,
+      "sweep_internal_min_bars": 5,
+      "atr_min_distance_multiplier": 0.3,
+      "atr_max_distance_multiplier": 3,
+      "be_buffer_pts": 1
+    },
+    "kill_zones": {
+      "ny_am": {
+        "start": "09:30",
+        "end": "11:30",
+        "tz": "EDT",
+        "note": "Primary — highest volume"
+      },
+      "pre_ny": {
+        "start": "08:30",
+        "end": "09:30",
+        "tz": "EDT",
+        "note": "Pre-market positioning"
+      },
+      "london": {
+        "start": "02:00",
+        "end": "05:00",
+        "tz": "EDT",
+        "note": "High volatility, trend initiation"
+      },
+      "entry_window": {
+        "start": "09:45",
+        "end": "11:30",
+        "tz": "EDT",
+        "note": "Effective scan window for this system"
+      }
+    },
+    "sweep_levels": {
+      "external": [
+        "PDH",
+        "PDL",
+        "AS.H",
+        "AS.L",
+        "LO.H",
+        "LO.L"
+      ],
+      "note": "PDH/PDL = previous day high/low (session starts 18:00 NY). Session levels from ICT Killzones labels. Sweeps expire after sweep_timeout_bars bars."
+    },
+    "fvg": {
+      "bullish_condition": "bar[i].low > bar[i-2].high — gap up, no overlap",
+      "bullish_boundaries": "top = bar[i].low, bottom = bar[i-2].high",
+      "bearish_condition": "bar[i].high < bar[i-2].low — gap down, no overlap",
+      "bearish_boundaries": "top = bar[i-2].low, bottom = bar[i].high"
+    },
+    "fvg_inversion": {
+      "bullish_ifvg_long": "Bearish FVG top touched, close above top, bullish candle → LONG",
+      "bearish_ifvg_short": "Bullish FVG bottom touched, close below bottom, bearish candle → SHORT"
+    },
+    "filters": {
+      "premium_discount": "LONG only in discount zone (price < session midpoint). SHORT only in premium zone (price > session midpoint).",
+      "ema_cloud": "Use Play₿it EMA v2 MA Top/Bottom. Price above MA Top = bullish (longs only). Price below MA Bottom = bearish (shorts only). Between bands = neutral (both allowed).",
+      "atr_validation": "SL distance must be between atr_min_distance_multiplier and atr_max_distance_multiplier times ATR."
+    }
+  },
+  "orb": {
+    "symbol": "IG:NASDAQ",
+    "timeframe": "5",
+    "note": "N4A Dynamic ORB Strategy Suite v23 — Classic ORB breakout + Revised FVG retest. Dual-logic: Classic is primary, Revised FVG is fallback.",
+    "paper_trading": {
+      "enabled": true,
+      "contract": "NQ",
+      "contracts": "auto",
+      "point_value": 1,
+      "target_risk_usd": 500,
+      "daily_trade_limit": 2,
+      "daily_loss_limit_usd": 1000,
+      "daily_profit_target_usd": 1000
+    },
+    "stop_params": {
+      "classic_orb_long": {
+        "atr_length": 14,
+        "atr_sl_multiplier": 1.5,
+        "min_sl_pts": 15,
+        "partial_tp_r": 1.5,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Classic ORB breakout long — close above ORB High on volume with EMA confirm. SL below ORB Low."
+      },
+      "classic_orb_short": {
+        "atr_length": 14,
+        "atr_sl_multiplier": 1.5,
+        "min_sl_pts": 15,
+        "partial_tp_r": 1.5,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Classic ORB breakdown short — close below ORB Low on volume with EMA confirm. SL above ORB High."
+      },
+      "revised_fvg_long": {
+        "atr_length": 14,
+        "atr_sl_multiplier": 1.5,
+        "min_sl_pts": 15,
+        "partial_tp_r": 1.5,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Revised FVG retest long — FVG forms at ORB High after bullish breakout. Price retests via iFVG. SL below ORB Low."
+      },
+      "revised_fvg_short": {
+        "atr_length": 14,
+        "atr_sl_multiplier": 1.5,
+        "min_sl_pts": 15,
+        "partial_tp_r": 1.5,
+        "final_tp_r": 2.5,
+        "min_rr": 2,
+        "active": true,
+        "description": "Revised FVG retest short — FVG forms at ORB Low after bearish breakdown. Price retests via iFVG. SL above ORB High."
+      }
+    },
+    "thresholds": {
+      "orb_period_start_edt": "09:30",
+      "orb_period_end_edt": "09:45",
+      "orb_bars": 3,
+      "entry_window_start_edt": "09:45",
+      "entry_window_end_edt": "11:30",
+      "volume_lookback_bars": 10,
+      "breakout_body_min_ratio": 0.5,
+      "orb_proximity_pts": 10,
+      "fvg_lookback_bars": 10
+    },
+    "classic_orb": {
+      "long_condition": "Bar closes above ORB High. Bullish candle body ≥ 50% of range. Volume ≥ avg. EMA bullish or neutral.",
+      "short_condition": "Bar closes below ORB Low. Bearish candle body ≥ 50% of range. Volume ≥ avg. EMA bearish or neutral.",
+      "sl_long": "ORB Low minus ATR buffer (max of: ORB Low - 5pts, entry - ATR*1.5). Min 15pts from entry.",
+      "sl_short": "ORB High plus ATR buffer (max of: ORB High + 5pts, entry + ATR*1.5). Min 15pts from entry."
+    },
+    "revised_fvg": {
+      "long_condition": "Price broke above ORB High earlier in session. Price returned near ORB High (within 10pts). Bearish FVG exists at ORB High. Current bar is Bullish iFVG (close above FVG top, bullish candle).",
+      "short_condition": "Price broke below ORB Low earlier in session. Price returned near ORB Low (within 10pts). Bullish FVG exists at ORB Low. Current bar is Bearish iFVG (close below FVG bottom, bearish candle).",
+      "note": "Revised FVG only triggers if Classic ORB did not already fire this session."
+    },
+    "filters": {
+      "ema_cloud": "Use Play₿it EMA v2. Long: price above MA Top or between bands. Short: price below MA Bottom or between bands.",
+      "volume": "Current bar volume must be ≥ average volume of last 10 bars.",
+      "session": "Only trade 9:45 AM - 11:30 AM EDT."
+    }
+  },
+  "paper_trading": {
+    "target_risk_usd": 500,
+    "daily_profit_target_usd": 1000,
+    "daily_trade_limit": 2,
+    "daily_loss_limit_usd": 1000,
+    "contracts": 1,
+    "point_value": 2
+  }
+}

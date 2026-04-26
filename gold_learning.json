@@ -1,0 +1,14 @@
+{
+  "last_updated": null,
+  "data_sources": {
+    "live_trades": 0,
+    "backtest_trades": 0,
+    "total_closed": 0
+  },
+  "stats": {},
+  "monte_carlo": {},
+  "violations": [],
+  "insights": [],
+  "session_history": [],
+  "suggested_rule_tweaks": []
+}

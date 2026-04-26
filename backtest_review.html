@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>NQ Backtest Review — Draw on Liquidity</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f0f0f; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; padding: 24px; }
+    h1 { color: #FF8C00; font-size: 24px; margin-bottom: 4px; }
+    .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+
+    .summary { display: flex; gap: 16px; margin-bottom: 40px; flex-wrap: wrap; }
+    .stat { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px 24px; text-align: center; }
+    .stat .val { font-size: 28px; font-weight: bold; color: #FF8C00; }
+    .stat .lbl { font-size: 12px; color: #888; margin-top: 4px; }
+
+    .section-title { color: #FF8C00; margin-bottom: 24px; font-size: 18px; border-bottom: 1px solid #222; padding-bottom: 10px; margin-top: 40px; }
+
+    .day { margin-bottom: 48px; border: 1px solid #222; border-radius: 12px; overflow: hidden; }
+    .day-header { background: #1a1a1a; padding: 16px 20px; display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #222; flex-wrap: wrap; }
+    .day-header .date { font-size: 18px; font-weight: bold; color: #fff; }
+    .day-header .result { font-size: 13px; font-weight: bold; padding: 4px 12px; border-radius: 20px; }
+    .hit { background: #1a3a1a; color: #4caf50; }
+    .partial { background: #3a3a1a; color: #ffc107; }
+    .both { background: #1a2a3a; color: #2196f3; }
+    .loss { background: #3a1a1a; color: #f44336; }
+    .day-header .bias { font-size: 13px; color: #aaa; margin-left: auto; }
+    .bias-bull { color: #4caf50; }
+    .bias-bear { color: #f44336; }
+    .tag-replay { font-size: 11px; background: #2a1a3a; color: #ce93d8; padding: 3px 8px; border-radius: 10px; }
+
+    .day-body { padding: 16px 20px; }
+    .screenshots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .screenshots img { width: 100%; border-radius: 8px; border: 1px solid #2a2a2a; cursor: pointer; transition: transform 0.2s; }
+    .screenshots img:hover { transform: scale(1.01); }
+    .screenshots .cap { font-size: 11px; color: #666; text-align: center; margin-top: 4px; }
+
+    .levels { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .level-pill { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; padding: 6px 12px; font-size: 13px; }
+    .level-pill span { color: #FF8C00; font-weight: bold; }
+    .rr-pill { background: #1a2a1a; border: 1px solid #2a4a2a; border-radius: 6px; padding: 6px 12px; font-size: 13px; color: #4caf50; font-weight: bold; }
+    .rr-pill-loss { background: #2a1a1a; border: 1px solid #4a2a2a; border-radius: 6px; padding: 6px 12px; font-size: 13px; color: #f44336; font-weight: bold; }
+
+    .notes { font-size: 13px; color: #aaa; line-height: 1.7; border-left: 3px solid #FF8C00; padding-left: 12px; }
+    .notes strong { color: #fff; }
+
+    .insights { background: #111; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; margin-bottom: 40px; }
+    .insights h2 { color: #FF8C00; margin-bottom: 16px; font-size: 18px; }
+    .insight-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .insight-item { background: #1a1a1a; border-radius: 8px; padding: 16px; }
+    .insight-item .icon { font-size: 20px; margin-bottom: 8px; }
+    .insight-item h4 { color: #fff; font-size: 14px; margin-bottom: 6px; }
+    .insight-item p { color: #888; font-size: 13px; line-height: 1.6; }
+
+    .improvements { background: #111; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; margin-bottom: 40px; }
+    .improvements h2 { color: #FF8C00; margin-bottom: 16px; font-size: 18px; }
+    .improve-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #1a1a1a; }
+    .improve-item:last-child { border-bottom: none; }
+    .improve-num { background: #FF8C00; color: #000; font-weight: bold; font-size: 12px; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+    .improve-text h4 { color: #fff; font-size: 14px; margin-bottom: 4px; }
+    .improve-text p { color: #888; font-size: 13px; line-height: 1.6; }
+
+    #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 999; align-items: center; justify-content: center; }
+    #lightbox.active { display: flex; }
+    #lightbox img { max-width: 95vw; max-height: 95vh; border-radius: 8px; }
+    #lightbox-close { position: fixed; top: 16px; right: 24px; font-size: 32px; color: #fff; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<h1>NQ Draw on Liquidity — Backtest Review</h1>
+<p class="subtitle">IG:NASDAQ · 3min & 1H entries · Feb–April 2026 · Session levels + EMA band bias</p>
+
+<!-- Summary -->
+<div class="summary">
+  <div class="stat"><div class="val">14</div><div class="lbl">Days Reviewed</div></div>
+  <div class="stat"><div class="val" style="color:#4caf50">10/13</div><div class="lbl">Levels Tagged</div></div>
+  <div class="stat"><div class="val" style="color:#4caf50">3W</div><div class="lbl">Replay Wins</div></div>
+  <div class="stat"><div class="val" style="color:#f44336">2L</div><div class="lbl">Replay Losses</div></div>
+  <div class="stat"><div class="val" style="color:#ffc107">60%</div><div class="lbl">Replay Win Rate</div></div>
+  <div class="stat"><div class="val" style="color:#ffc107">~200pt</div><div class="lbl">Avg BSL↔SSL Range</div></div>
+</div>
+
+<!-- Insights -->
+<div class="insights">
+  <h2>What the Data Shows</h2>
+  <div class="insight-grid">
+    <div class="insight-item">
+      <div class="icon">📍</div>
+      <h4>Open Candle = Bias Signal</h4>
+      <p>Every session, the 9:30 open candle revealed direction. A sweep + rejection of the BSL (high) = bearish day. A bounce off SSL (low) = bullish day. This was correct 7 out of 8 observed sessions.</p>
+    </div>
+    <div class="insight-item">
+      <div class="icon">🎯</div>
+      <h4>Both Levels Get Hit</h4>
+      <p>5 of 8 observed days saw price sweep one level then reverse to the other. The midpoint frequently acted as the inflection point — a rejection at midpoint after a sweep often confirmed continuation.</p>
+    </div>
+    <div class="insight-item">
+      <div class="icon">📐</div>
+      <h4>Midpoint = Key S/R</h4>
+      <p>Midpoint hit = partial W. On the March 12 and March 9 sessions, hitting the midpoint was meaningful — it acted as real support/resistance, not just a reference line.</p>
+    </div>
+    <div class="insight-item">
+      <div class="icon">⚠️</div>
+      <h4>Beware Momentum Continuations</h4>
+      <p>Two losses came from shorting into strong upside momentum after a high-volume candle. When a session rips +230pts and price is above EMA by 160+pts, don't fade it — wait for structure to form.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Improvements -->
+<div class="improvements">
+  <h2>What to Improve</h2>
+  <div class="improve-item">
+    <div class="improve-num">1</div>
+    <div class="improve-text">
+      <h4>Add Sweep Confirmation Before Entry</h4>
+      <p>Don't enter the moment price touches BSL/SSL. Wait for the candle to close back inside the range — that closing candle confirms the sweep and rejection. This filters false breakouts and gives a cleaner entry with tighter stop.</p>
+    </div>
+  </div>
+  <div class="improve-item">
+    <div class="improve-num">2</div>
+    <div class="improve-text">
+      <h4>High-Volume Candles = Trap Warning</h4>
+      <p>When a single bar sweeps both BSL and SSL on massive volume (2x+ average), it's accumulation/distribution — not a fade signal. Wait for the new direction to establish before entering. Both 1H losses had this pattern.</p>
+    </div>
+  </div>
+  <div class="improve-item">
+    <div class="improve-num">3</div>
+    <div class="improve-text">
+      <h4>Don't Short Into Strong Upside Momentum</h4>
+      <p>If price is 150+pts above the EMA band and the session is up +230pts, the draw on liquidity is likely higher — not lower. Respect the trend until EMA is recaptured from above as resistance.</p>
+    </div>
+  </div>
+  <div class="improve-item">
+    <div class="improve-num">4</div>
+    <div class="improve-text">
+      <h4>Use Midpoint as Partial Target / BE</h4>
+      <p>On the SSL → BSL trade (or vice versa), take 50% off at the midpoint and move stop to breakeven. Validated on March 9, March 12, and March 16 where midpoint was a real inflection.</p>
+    </div>
+  </div>
+  <div class="improve-item">
+    <div class="improve-num">5</div>
+    <div class="improve-text">
+      <h4>EMA Band = Regime Filter</h4>
+      <p>Price above EMA band = bullish regime, look for longs. Price below EMA = bearish, look for shorts. Only fade moves when price sweeps a level AND EMA confirms the rejection direction.</p>
+    </div>
+  </div>
+  <div class="improve-item">
+    <div class="improve-num">6</div>
+    <div class="improve-text">
+      <h4>Avoid Entries After 12 PM EDT</h4>
+      <p>Several sessions showed price drifting aimlessly after noon. The draw on liquidity concept works best in the NY AM session (9:30–12:00). Levels hit after 12 PM tend to be chop, not clean sweep-and-reverse setups.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Today's Replay Trades -->
+<h2 class="section-title">Today's Session — April 5, 2026</h2>
+
+<!-- April 3, 2026 Morning TA Setup -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Friday April 3, 2026</div>
+    <div class="result partial">Setup — In Progress</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bear">Bias: Bearish — Below EMA</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_undefined_2026-04-05T01-05-07-903Z.png" onclick="openLightbox(this)" /><div class="cap">Raw Chart — 10 AM EDT</div></div>
+      <div><img src="screenshots/tv_undefined_2026-04-05T01-10-21-962Z.png" onclick="openLightbox(this)" /><div class="cap">Morning TA — BSL/SSL/Mid Marked</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL (LO.H) <span>23,269.2</span></div>
+      <div class="level-pill">Entry <span>~23,150</span></div>
+      <div class="level-pill">Stop <span>23,275</span></div>
+      <div class="level-pill">Mid <span>23,091.2</span></div>
+      <div class="level-pill">SSL / Draw (AS.L) <span>22,913.1</span></div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> Price opened below EMA band (23,240/23,228) and sold off through LO.L (23,156). Asia Low (AS.L 22,913) is the primary unswept draw below. Looking for SHORT on pullback to LO.L area. <strong>Key levels:</strong> NYAM.L at 23,111 is immediate support — break below targets SSL at 22,913. ⚠️ Session range already 277pts at 10 AM — &gt;200pt caution applies.</div>
+  </div>
+</div>
+
+<h2 class="section-title">Today's Replay Trades — April 4, 2026</h2>
+
+<!-- March 16 SHORT (Replay) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Monday March 16, 2026</div>
+    <div class="result hit">SSL Hit — WIN</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bear">Bias: Bearish — BSL Swept</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_chart_2026-04-04T17-33-57-369Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,789 · Entry 24,740 · SSL 24,495 · Mid 24,617</div></div>
+      <div><img src="screenshots/tv_chart_2026-04-04T17-35-49-673Z.png" onclick="openLightbox(this)" /><div class="cap">After — SSL Hit, Price Ran to 24,423</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL (Swept) <span>24,789</span></div>
+      <div class="level-pill">Entry <span>24,740</span></div>
+      <div class="level-pill">Stop <span>24,800</span></div>
+      <div class="level-pill">Mid <span>24,617</span></div>
+      <div class="level-pill">SSL (Target) <span>24,495</span></div>
+      <div class="rr-pill">R:R ~4:1 ✅</div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> NYAM.H at 24,789 was swept (BSL tagged). London swept Asia H then dumped to LO.L. NY open ripped to NYAM.H then rejected. EMA band (24,977-24,983) overhead as resistance. <strong>Result:</strong> SSL at 24,495 hit cleanly — price continued to 24,423. Full target + 72pts extra. Textbook BSL sweep → short.</div>
+  </div>
+</div>
+
+<!-- March 12 LONG (Replay) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Thursday March 12, 2026</div>
+    <div class="result partial">Midpoint Hit — Partial W</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bull">Bias: Bullish — SSL Sweep Watch</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_chart_2026-04-04T17-50-10-478Z.png" onclick="openLightbox(this)" /><div class="cap">Before — SSL 24,612 · Mid 24,716 · BSL 24,808 (EMA band)</div></div>
+      <div><img src="screenshots/tv_chart_2026-04-04T17-50-55-173Z.png" onclick="openLightbox(this)" /><div class="cap">After — Midpoint Tagged, Price at 24,625</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">SSL <span>24,612</span></div>
+      <div class="level-pill">Entry <span>24,625</span></div>
+      <div class="level-pill">Stop <span>24,580</span></div>
+      <div class="level-pill">Mid <span>24,716</span></div>
+      <div class="level-pill">BSL (EMA) <span>24,808</span></div>
+      <div class="rr-pill">Midpoint = W ✅</div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> NYAM.H (24,906) swept and sold hard to NYAM.L (24,612). Session range 293pts. EMA band (24,808-24,820) overhead. Watching for SSL sweep below 24,612 → long back to EMA. <strong>Result:</strong> Price reached midpoint at 24,716 — user called it a W. BSL (EMA band) was not tested. Midpoint as partial target validated again.</div>
+  </div>
+</div>
+
+<!-- March 9 LONG (Replay) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Monday March 9, 2026</div>
+    <div class="result hit">BSL Hit — WIN</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bull">Bias: Bullish — EMA Band Bounce</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_chart_2026-04-04T17-53-51-466Z.png" onclick="openLightbox(this)" /><div class="cap">Before — SSL 24,257 · Entry 24,335 (EMA) · BSL 24,498 (NYAM.H)</div></div>
+      <div><img src="screenshots/tv_chart_2026-04-04T17-54-25-226Z.png" onclick="openLightbox(this)" /><div class="cap">After — BSL at 24,498 Hit, Price Ran to 24,612</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">SSL <span>24,257</span></div>
+      <div class="level-pill">Entry <span>24,335</span></div>
+      <div class="level-pill">Stop <span>24,295</span></div>
+      <div class="level-pill">Mid <span>24,416</span></div>
+      <div class="level-pill">BSL (NYAM.H) <span>24,498</span></div>
+      <div class="rr-pill">R:R ~4:1 ✅</div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> Monday swept Asia Low (AS.L) and LO.L (SSL swept). NY AM ripped to NYAM.H (24,498 = BSL). Price pulled back to EMA band (24,326-24,342) — sitting right on it. EMA = support, 160pts below BSL. <strong>Result:</strong> BSL hit at 24,498, price continued to 24,612 — 114pts beyond target. EMA band bounce held perfectly as entry.</div>
+  </div>
+</div>
+
+<!-- ~March 2 SHORT 1H (Replay LOSS) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">~March 2, 2026 (1H Chart)</div>
+    <div class="result loss">Stop Hit — LOSS</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bear">Bias: Bearish — NYAM.H Rejection</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_chart_2026-04-04T17-56-20-314Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,858 · Entry 24,820 · SSL 24,648 · Mid 24,734</div></div>
+      <div><img src="screenshots/tv_chart_2026-04-04T17-57-12-805Z.png" onclick="openLightbox(this)" /><div class="cap">After — Stop Hit, Price Ran to 25,006</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL (Swept) <span>24,858</span></div>
+      <div class="level-pill">Entry <span>24,820</span></div>
+      <div class="level-pill">Stop <span>24,875</span></div>
+      <div class="level-pill">Mid <span>24,734</span></div>
+      <div class="level-pill">SSL (Target) <span>24,648</span></div>
+      <div class="rr-pill-loss">Stop Hit ❌</div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> 1H chart, strong session rally from AS.L/LO.L up +230pts to NYAM.H (24,858). EMA band (24,859-24,899) overhead. Attempted short on BSL rejection. <strong>Result:</strong> Price blew through stop (24,875) and ran to 25,006. <strong>Lesson:</strong> When session is up +230pts and price is 160pts above EMA, don't fade — momentum too strong. NYAM.H tagged as continuation target, not reversal point.</div>
+  </div>
+</div>
+
+<!-- ~Feb 24 SHORT 1H (Replay LOSS) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">~Feb 24, 2026 (1H Chart)</div>
+    <div class="result loss">Stop Hit — LOSS</div>
+    <span class="tag-replay">Replay Trade</span>
+    <div class="bias bias-bear">Bias: Bearish — 1H Downtrend + BSL Sweep</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_chart_2026-04-04T17-59-30-232Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,912 · Entry 24,875 · SSL 24,643 · Mid 24,759</div></div>
+      <div><img src="screenshots/tv_chart_2026-04-04T18-02-16-499Z.png" onclick="openLightbox(this)" /><div class="cap">After — Stop Hit, Price Ran to 24,982</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL (Swept) <span>24,912</span></div>
+      <div class="level-pill">Entry <span>24,875</span></div>
+      <div class="level-pill">Stop <span>24,920</span></div>
+      <div class="level-pill">Mid <span>24,759</span></div>
+      <div class="level-pill">SSL (Target) <span>24,643</span></div>
+      <div class="rr-pill-loss">Stop Hit ❌</div>
+    </div>
+    <div class="notes"><strong>Setup:</strong> 1H downtrend visible. Final bar swept both BSL (24,912) and SSL (24,643) on massive volume (100K+ vs 23K avg) — read as distribution/continuation short. <strong>Result:</strong> Price reversed the entire downtrend and ripped to 24,982 — stop hit. <strong>Lesson:</strong> A candle that sweeps BOTH BSL and SSL on extreme volume is accumulation, not distribution. The trend was flipping. Never short a massive-volume candle that closes mid-range — wait for new structure to form.</div>
+  </div>
+</div>
+
+<!-- OBSERVATION DAYS SECTION -->
+<h2 class="section-title">Observed Sessions — April 3, 2026</h2>
+
+<!-- March 10 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Monday March 10, 2026</div>
+    <div class="result hit">BSL Tagged</div>
+    <div class="bias bias-bull">Bias: Bullish</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/before_march10_rip.png" onclick="openLightbox(this)" /><div class="cap">Before — Levels Marked</div></div>
+      <div><img src="screenshots/after_march10_rip.png" onclick="openLightbox(this)" /><div class="cap">After — Price Action</div></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Clean double-tap on BSL. Open candle was bullish, draw identified correctly. Price reached target without tagging SSL first.</div>
+  </div>
+</div>
+
+<!-- March 11 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Tuesday March 11, 2026</div>
+    <div class="result hit">BSL Swept + Rejected</div>
+    <div class="bias bias-bull">Bias: Bullish → Reversal</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/before_march11_rip.png" onclick="openLightbox(this)" /><div class="cap">Before — Levels Marked</div></div>
+      <div><img src="screenshots/after_march11_rip.png" onclick="openLightbox(this)" /><div class="cap">After — BSL Sweep & Reject</div></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Price swept BSL then rejected hard. Classic liquidity hunt — anyone buying the BSL breakout got trapped. Short from BSL after sweep confirmation would have been the play.</div>
+  </div>
+</div>
+
+<!-- March 12 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Wednesday March 12, 2026</div>
+    <div class="result hit">SSL Tagged</div>
+    <div class="bias bias-bear">Bias: Bearish</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/before_march12_rip.png" onclick="openLightbox(this)" /><div class="cap">Before — Levels Marked</div></div>
+      <div><img src="screenshots/after_march12_rip.png" onclick="openLightbox(this)" /><div class="cap">After — SSL Hit</div></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Open candle was bearish, price targeted SSL and hit it cleanly. Straightforward directional day — one draw, one target.</div>
+  </div>
+</div>
+
+<!-- March 13 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Thursday March 13, 2026</div>
+    <div class="result both">Both Levels Hit</div>
+    <div class="bias bias-bull">Bias: Bullish then Bearish</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/before_march13_rip.png" onclick="openLightbox(this)" /><div class="cap">Before — Levels Marked</div></div>
+      <div><img src="screenshots/after_march13_rip.png" onclick="openLightbox(this)" /><div class="cap">After — Both Levels Tagged</div></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Both BSL and SSL got hit in the same session. Price swept BSL first then reversed to SSL. Full range trade opportunity — partial at midpoint, full at SSL would have been ideal.</div>
+  </div>
+</div>
+
+<!-- March 16 (Observation) -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Monday March 16, 2026</div>
+    <div class="result hit">BSL Tapped · Midpoint Held</div>
+    <div class="bias bias-bull">Bias: Bullish</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/before_march16_rip.png" onclick="openLightbox(this)" /><div class="cap">Before — Levels Marked</div></div>
+      <div><img src="screenshots/after_march16_rip.png" onclick="openLightbox(this)" /><div class="cap">After — BSL Tap, Midpoint Support</div></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> BSL got tapped, pulled back to midpoint which acted as support, then continued. <strong>Key insight:</strong> midpoint re-entry after BSL tap → second long opportunity.</div>
+  </div>
+</div>
+
+<!-- March 17 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Tuesday March 17, 2026</div>
+    <div class="result both">BSL Swept → SSL Hunt</div>
+    <div class="bias bias-bear">Bias: Bearish after BSL sweep</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-33-39-615Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,880 · SSL 24,545 · Mid 24,712</div></div>
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-38-13-803Z.png" onclick="openLightbox(this)" /><div class="cap">After — BSL Swept, Heading Toward SSL</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL <span>24,880</span></div>
+      <div class="level-pill">SSL <span>24,545</span></div>
+      <div class="level-pill">Mid <span>24,712</span></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Open pushed to BSL at 24,880, swept it, then reversed and sold through midpoint heading for SSL. User noted: <em>"I couldve got a 1:1 short or longed the BE line instead and aimed for highs."</em></div>
+  </div>
+</div>
+
+<!-- March 18 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Wednesday March 18, 2026</div>
+    <div class="result both">BSL Swept → SSL → BSL Again</div>
+    <div class="bias bias-bear">Bias: Bearish open, then full reversal</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-42-21-417Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,945 · SSL 24,635 · Mid 24,790</div></div>
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-43-52-722Z.png" onclick="openLightbox(this)" /><div class="cap">After — BSL Swept, SSL Approached, Recovered</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL <span>24,945</span></div>
+      <div class="level-pill">SSL <span>24,635</span></div>
+      <div class="level-pill">Mid <span>24,790</span></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Pre-session sold from 24,945 down to 24,635. Open candle reversed bullishly off SSL area. Price pushed back toward BSL before pulling back. Full range = 310 points.</div>
+  </div>
+</div>
+
+<!-- April 1 -->
+<div class="day">
+  <div class="day-header">
+    <div class="date">Wednesday April 1, 2026</div>
+    <div class="result both">Open Swept BSL → SSL → Back to BSL</div>
+    <div class="bias bias-bear">Bias: Bearish open sweep, then massive reversal</div>
+  </div>
+  <div class="day-body">
+    <div class="screenshots">
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-56-24-519Z.png" onclick="openLightbox(this)" /><div class="cap">Before — BSL 24,061 · SSL 23,823 · Mid 23,942</div></div>
+      <div><img src="screenshots/tv_undefined_2026-04-04T07-58-53-829Z.png" onclick="openLightbox(this)" /><div class="cap">After — Full Round Trip BSL → SSL → BSL</div></div>
+    </div>
+    <div class="levels">
+      <div class="level-pill">BSL <span>24,061</span></div>
+      <div class="level-pill">SSL <span>23,823</span></div>
+      <div class="level-pill">Mid <span>23,942</span></div>
+    </div>
+    <div class="notes"><strong>Result:</strong> Open candle spiked to 24,061 (BSL), vol 4,867 — swept and reversed hard. Sold all the way to SSL at 23,823, then ripped back through midpoint and retested BSL area. Full BSL→SSL range = <strong>238 points</strong>.</div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <span id="lightbox-close" onclick="closeLightbox()">×</span>
+  <img id="lightbox-img" src="" />
+</div>
+
+<script>
+  function openLightbox(img) {
+    document.getElementById('lightbox-img').src = img.src;
+    document.getElementById('lightbox').classList.add('active');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+</script>
+
+</body>
+</html>

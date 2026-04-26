@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #060810;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+    .logo span { color: #22d3ee; }
+    .subtitle {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 36px;
+      letter-spacing: 0.5px;
+    }
+    .form {
+      -webkit-app-region: no-drag;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 260px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none;
+      text-align: center;
+      letter-spacing: 3px;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #22d3ee; }
+    input::placeholder { letter-spacing: 0; color: #475569; font-family: inherit; }
+    button {
+      padding: 10px;
+      background: rgba(34,211,238,0.15);
+      border: 1px solid rgba(34,211,238,0.3);
+      border-radius: 8px;
+      color: #22d3ee;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    button:hover { background: rgba(34,211,238,0.25); }
+    .error {
+      font-size: 11px;
+      color: #f87171;
+      text-align: center;
+      min-height: 16px;
+    }
+    .quit {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: transparent;
+      border: none;
+      color: #475569;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .quit:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+  </style>
+</head>
+<body>
+  <button class="quit" onclick="window.ala.quit()">✕</button>
+  <div class="logo"><span>ALA</span> Trader</div>
+  <div class="subtitle">AUTONOMOUS LEARNING AI</div>
+  <div class="form">
+    <input type="password" id="pwd" placeholder="Enter access key" autofocus
+      onkeydown="if(event.key==='Enter') login()"/>
+    <button onclick="login()">Unlock</button>
+    <div class="error" id="err"></div>
+  </div>
+  <script>
+    async function login() {
+      const pwd = document.getElementById('pwd').value;
+      const ok  = await window.ala.checkPassword(pwd);
+      if (ok) {
+        window.ala.loginSuccess();
+      } else {
+        const err = document.getElementById('err');
+        err.textContent = 'Incorrect access key.';
+        document.getElementById('pwd').value = '';
+        document.getElementById('pwd').focus();
+        setTimeout(() => err.textContent = '', 2500);
+      }
+    }
+  </script>
+</body>
+</html>

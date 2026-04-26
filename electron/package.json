@@ -1,0 +1,50 @@
+{
+  "name": "ala-trader",
+  "version": "1.0.0",
+  "description": "ALA Trader — Autonomous Learning AI",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.ala.trader",
+    "productName": "ALA Trader",
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "../",
+        "to": "app",
+        "filter": [
+          "**/*",
+          "!electron/**",
+          "!.git/**",
+          "!screenshots/**",
+          "!*.md",
+          "!tests/**"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "icon": "icons/icon.icns"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "icons/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "installerIcon": "icons/icon.ico",
+      "uninstallerIcon": "icons/icon.ico",
+      "shortcutName": "ALA Trader"
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "NQ": {
+    "label": "MNQ · Strategies",
+    "instrument": "IG:NASDAQ",
+    "timeframe": "3m / 5m · NY AM session",
+    "strategies": {
+      "ilm_long": "ILM Long — Bullish iFVG",
+      "ilm_short": "ILM Short — Bearish iFVG",
+      "classic_orb_long": "Classic ORB Long — Breakout",
+      "classic_orb_short": "Classic ORB Short — Breakdown",
+      "revised_fvg_long": "Revised FVG Long — ORB Retest",
+      "revised_fvg_short": "Revised FVG Short — ORB Retest"
+    },
+    "colors": {
+      "ilm_long": "#34d399",
+      "ilm_short": "#f87171",
+      "classic_orb_long": "#874efe",
+      "classic_orb_short": "#0061ff",
+      "revised_fvg_long": "#38bdf8",
+      "revised_fvg_short": "#fb923c"
+    },
+    "rules": [],
+    "show_rules": false
+  },
+  "GOLD": {
+    "label": "GOLD · Trendline Breakout",
+    "instrument": "FOREXCOM:XAUUSD",
+    "timeframe": "3m entry · 22h session",
+    "strategies": {
+      "trendline_breakout_long": "Trendline Breakout Long",
+      "trendline_breakout_short": "Trendline Breakout Short",
+      "ema_breakout": "EMA Breakout"
+    },
+    "colors": {
+      "trendline_breakout_long": "#34d399",
+      "trendline_breakout_short": "#f87171",
+      "ema_breakout": "#fbbf24"
+    },
+    "rules": [
+      {
+        "icon": "📐",
+        "title": "Trendlines Are Drawn From Wicks",
+        "text": "Downtrend lines connect swing high wicks. Uptrend lines connect swing low wicks. The agent auto-detects these from the 2 most recent swing pivots using a 2-bar lookback on each side."
+      },
+      {
+        "icon": "📈",
+        "title": "Long = Body Close Above Downtrend Line",
+        "text": "The candle BODY (not wick) must close above the projected downtrend line. A wick above and close back below is a fake-out — body close is the confirmation."
+      },
+      {
+        "icon": "📉",
+        "title": "Short = Body Close Below Uptrend Line",
+        "text": "The candle BODY must close below the projected uptrend line. Same logic inverted — body close is the only valid confirmation."
+      },
+      {
+        "icon": "🧱",
+        "title": "Accumulation = Compression Before the Break",
+        "text": "8–15 bars of tight, ranging candles near the trendline before the breakout. This is the 'solid' base. No accumulation = lower confidence, noted in the log but not blocked."
+      },
+      {
+        "icon": "🎯",
+        "title": "Minimum 1:3 R:R",
+        "text": "Stop goes below the breakout candle low (long) or above the breakout candle high (short). Target must be at least 3× the risk distance — next swing high/low or clear level."
+      },
+      {
+        "icon": "📐",
+        "title": "EMA = Confluence Only",
+        "text": "EMA direction adds confidence but doesn't trigger. Conflicting EMA (e.g. bearish EMA on a long) is noted but doesn't block the trade — trendline break is the primary signal."
+      },
+      {
+        "icon": "⚡",
+        "title": "EMA Breakout = Strong Body at EMA Support",
+        "text": "Price is inside or touching the EMA band. A strong bull body candle forms at MA Top or MA Bottom support — body must be 60%+ of the candle range. Wick above is acceptable (momentum), wick through the EMA below and close back above is the ideal entry. Target is next unswept liquidity level with minimum 3:1 R:R."
+      }
+    ],
+    "show_rules": false
+  },
+  "BTC": {
+    "label": "BTC · Strategy",
+    "instrument": "BTCUSD",
+    "timeframe": "3m entry · 15m context",
+    "strategies": {},
+    "colors": {},
+    "rules": []
+  }
+}

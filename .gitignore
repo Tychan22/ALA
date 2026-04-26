@@ -4,3 +4,7 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+electron/dist/
+electron/node_modules/
+electron/app-config.json
+config.local.json
