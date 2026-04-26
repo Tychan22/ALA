@@ -647,7 +647,7 @@
   <!-- HEADER -->
   <header class="header">
     <div class="header-left">
-      <div class="logo" id="logo-text"><span style="color:#22d3ee">MNQ</span> <span style="color:#ffffff">Autonomous Learning AI <span id="app-version">1.0</span></span></div>
+      <div class="logo" id="logo-text"><span style="color:#22d3ee">MNQ</span> <span style="color:#ffffff">Autonomous Learning AI __VERSION__</span></div>
       <div class="ticker-switcher" id="ticker-switcher"></div>
     </div>
     <div class="header-right">
@@ -1187,9 +1187,6 @@ function parseCSV(text){
 // ─── LOAD ─────────────────────────────────────────────────────────────────────
 async function loadAll(){
   let ok = true;
-
-  // Pull version from electron/package.json via server
-  fetch('/api/version').then(r=>r.json()).then(d=>{ if(d.version) document.getElementById('app-version').textContent = d.version; }).catch(()=>{});
 
   // Load strategies.json + rules.json (always, so toggles work on any tab)
   try {
