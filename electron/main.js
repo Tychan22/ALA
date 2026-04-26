@@ -104,10 +104,9 @@ function launchTradingView() {
     try { exec('taskkill /F /IM TradingView.exe', { timeout: 3000 }); } catch {}
     setTimeout(() => {
       const script = path.join(PROJECT_ROOT, 'launch_tv.ps1');
-      exec(`powershell -ExecutionPolicy Bypass -File "${script}"`, { timeout: 15000 }, (err, stdout) => {
-        if (err) console.log('[ALA] TradingView UWP launch failed:', err.message);
-        else console.log('[ALA] TradingView launched via UWP COM, PID:', stdout.trim());
-      });
+      const ps = spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', script], { stdio: 'pipe' });
+      ps.stdout.on('data', d => console.log('[ALA] TradingView UWP COM, PID:', d.toString().trim()));
+      ps.stderr.on('data', d => console.log('[ALA] TradingView launch error:', d.toString().trim()));
     }, 1000);
     return;
   }
