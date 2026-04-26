@@ -2,6 +2,8 @@ import express from 'express';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { spawn } from 'child_process';
+import { platform } from 'os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -20,6 +22,22 @@ import http from 'http';
 // Version endpoint — must be before /api/:file wildcard
 app.get('/api/version', (_req, res) => {
   res.json({ version: process.env.ALA_VERSION || '1.0' });
+});
+
+// Launch TradingView with CDP port
+app.post('/api/launch-tradingview', (_req, res) => {
+  res.json({ ok: true }); // respond immediately, launch is async
+  if (platform() === 'win32') {
+    const script = join(__dirname, 'launch_tv.ps1');
+    spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', script], { stdio: 'ignore', detached: true }).unref();
+  } else {
+    const candidates = [
+      '/Applications/TradingView.app/Contents/MacOS/TradingView',
+      `${process.env.HOME}/Applications/TradingView.app/Contents/MacOS/TradingView`,
+    ];
+    const tvPath = candidates.find(p => existsSync(p));
+    if (tvPath) spawn(tvPath, ['--remote-debugging-port=9222'], { stdio: 'ignore', detached: true }).unref();
+  }
 });
 
 app.get('/api/tv-status', (req, res) => {
