@@ -1,4 +1,9 @@
-$aumid = "31178TradingViewInc.TradingView_q4jpyh43s5mv6!TradingView.Desktop"
+$pkg = Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue
+if (-not $pkg) { Write-Error "TradingView not installed"; exit 1 }
+$manifest = Get-AppxPackageManifest $pkg
+$appId = $manifest.Package.Applications.Application.Id
+$aumid = "$($pkg.PackageFamilyName)!$appId"
+
 $def = @"
 using System; using System.Runtime.InteropServices;
 namespace TV {
@@ -19,4 +24,4 @@ namespace TV {
 "@
 Add-Type -TypeDefinition $def
 $p = [TV.Launcher]::Launch($aumid, "--remote-debugging-port=9222")
-Write-Output "Result: 0 PID: $p"
+Write-Output "Launched TradingView PID: $p"
