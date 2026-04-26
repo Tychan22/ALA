@@ -26,10 +26,32 @@ app.get('/api/version', (_req, res) => {
 
 // Launch TradingView with CDP port
 app.post('/api/launch-tradingview', (_req, res) => {
-  res.json({ ok: true }); // respond immediately, launch is async
+  res.json({ ok: true });
   if (platform() === 'win32') {
-    const script = join(__dirname, 'launch_tv.ps1');
-    spawn('powershell', ['-ExecutionPolicy', 'Bypass', '-File', script], { stdio: 'ignore', detached: true }).unref();
+    // Try COM activation via inline PowerShell (no file path issues)
+    const TV_AUMID = '31178TradingViewInc.TradingView_q4jpyh43s5mv6!TradingView.Desktop';
+    const psCmd = `
+$pkg = Get-AppxPackage -Name '*TradingView*' -ErrorAction SilentlyContinue;
+if ($pkg) {
+  $manifest = Get-AppxPackageManifest $pkg;
+  $appId = $manifest.Package.Applications.Application.Id;
+  $aumid = "$($pkg.PackageFamilyName)!$appId";
+} else { $aumid = '${TV_AUMID}'; }
+$def = @'
+using System; using System.Runtime.InteropServices;
+[ComImport, Guid("2e941141-7f97-4756-ba1d-9decde894a3d"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface IAAMgr { int ActivateApplication(string id, string args, int opts, out int pid); int b(string a, IntPtr b, string c, out int d); int c(string a, IntPtr b, out int c); }
+[ComImport, Guid("45BA127D-10A8-46EA-8AB7-56EA9078943C"), ClassInterface(ClassInterfaceType.None)]
+public class AAMgr {}
+'@;
+Add-Type -TypeDefinition $def;
+$m = [IAAMgr]([AAMgr]::new()); $p = 0;
+$m.ActivateApplication($aumid, '--remote-debugging-port=9222', 0, [ref]$p);
+Write-Output "Launched PID $p"`.trim();
+    const encoded = Buffer.from(psCmd, 'utf16le').toString('base64');
+    const ps = spawn('powershell', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { stdio: 'pipe' });
+    ps.stdout.on('data', d => console.log('[TV launch]', d.toString().trim()));
+    ps.stderr.on('data', d => console.error('[TV launch error]', d.toString().trim()));
   } else {
     const candidates = [
       '/Applications/TradingView.app/Contents/MacOS/TradingView',
