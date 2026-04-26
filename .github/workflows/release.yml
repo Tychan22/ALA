@@ -16,7 +16,10 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install electron dependencies
         working-directory: electron
         run: npm install
 
