@@ -7,7 +7,9 @@
     "start": "electron .",
     "build:mac": "node prebuild.js && electron-builder --mac && node postbuild.js",
     "build:win": "node prebuild.js && electron-builder --win && node postbuild.js",
-    "build:all": "node prebuild.js && electron-builder --mac --win && node postbuild.js"
+    "build:all": "node prebuild.js && electron-builder --mac --win && node postbuild.js",
+    "release:win": "node prebuild.js && electron-builder --win --publish always && node postbuild.js",
+    "release:all": "node prebuild.js && electron-builder --mac --win --publish always && node postbuild.js"
   },
   "build": {
     "appId": "com.ala.trader",
