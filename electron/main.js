@@ -222,11 +222,15 @@ function setupAutoUpdater() {
   if (!app.isPackaged) return; // skip in dev
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  autoUpdater.on('update-available', () => {
-    mainWindow?.webContents.send('update-available');
-  });
   autoUpdater.on('update-downloaded', () => {
-    mainWindow?.webContents.send('update-ready');
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Ready',
+      message: 'A new version of ALA Trader has been downloaded. Restart to apply the update.',
+      buttons: ['Restart Now', 'Later'],
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall();
+    });
   });
   autoUpdater.checkForUpdates().catch(err => console.log('[ALA] Update check failed:', err.message));
 }
