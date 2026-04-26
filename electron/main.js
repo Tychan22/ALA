@@ -99,16 +99,26 @@ function findTradingViewPath() {
 }
 
 function launchTradingView() {
+  if (process.platform === 'win32') {
+    // UWP apps can't be launched via .exe — use COM activation via PowerShell
+    try { exec('taskkill /F /IM TradingView.exe', { timeout: 3000 }); } catch {}
+    setTimeout(() => {
+      const script = path.join(PROJECT_ROOT, 'launch_tv.ps1');
+      exec(`powershell -ExecutionPolicy Bypass -File "${script}"`, { timeout: 15000 }, (err, stdout) => {
+        if (err) console.log('[ALA] TradingView UWP launch failed:', err.message);
+        else console.log('[ALA] TradingView launched via UWP COM, PID:', stdout.trim());
+      });
+    }, 1000);
+    return;
+  }
+
+  // macOS — direct binary launch
   const tvPath = findTradingViewPath();
   if (!tvPath) {
     console.log('[ALA] TradingView not found — open manually with --remote-debugging-port=9222');
     return;
   }
-  try {
-    if (process.platform === 'win32') exec('taskkill /F /IM TradingView.exe', { timeout: 3000 });
-    else exec('pkill -f "TradingView$"', { timeout: 3000 });
-  } catch { /* not running */ }
-
+  try { exec('pkill -f "TradingView$"', { timeout: 3000 }); } catch {}
   setTimeout(() => {
     const child = spawn(tvPath, ['--remote-debugging-port=9222'], { detached: true, stdio: 'ignore' });
     child.unref();
