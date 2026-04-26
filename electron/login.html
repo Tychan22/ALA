@@ -84,6 +84,12 @@
       -webkit-app-region: no-drag;
     }
     .quit:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+    .version {
+      position: absolute;
+      bottom: 14px;
+      color: #334155;
+      font-size: 11px;
+    }
   </style>
 </head>
 <body>
@@ -96,7 +102,10 @@
     <button onclick="login()">Unlock</button>
     <div class="error" id="err"></div>
   </div>
+  <div class="version" id="ver"></div>
   <script>
+    window.ala.version().then(v => document.getElementById('ver').textContent = 'v' + v);
+
     async function login() {
       const pwd = document.getElementById('pwd').value;
       const ok  = await window.ala.checkPassword(pwd);

@@ -21,7 +21,11 @@ import http from 'http';
 
 // Version endpoint — must be before /api/:file wildcard
 app.get('/api/version', (_req, res) => {
-  res.json({ version: process.env.ALA_VERSION || '1.0' });
+  let version = process.env.ALA_VERSION;
+  if (!version || version === 'undefined') {
+    try { version = JSON.parse(readFileSync(join(__dirname, 'electron', 'package.json'), 'utf8')).version; } catch {}
+  }
+  res.json({ version: version || '1.0' });
 });
 
 // Launch TradingView with CDP port
@@ -102,6 +106,70 @@ app.post('/api/:file', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/claude — stream a Claude response
+app.post('/api/claude', async (req, res) => {
+  let apiKey;
+  try {
+    const cfg = JSON.parse(readFileSync(join(__dirname, 'electron', 'app-config.json'), 'utf8'));
+    apiKey = cfg.anthropicKey;
+  } catch {}
+  if (!apiKey) return res.status(400).json({ error: 'No Anthropic API key set in app-config.json' });
+
+  const { messages } = req.body;
+
+  let context = '';
+  try {
+    const strategies = JSON.parse(readFileSync(FILES.strategies, 'utf8'));
+    const rules      = JSON.parse(readFileSync(FILES.rules,      'utf8'));
+    context = `Strategies:\n${JSON.stringify(strategies, null, 2)}\n\nRules:\n${JSON.stringify(rules, null, 2)}`;
+  } catch {}
+
+  const system = `You are ALA (Autonomous Learning AI), an AI trading assistant built into the ALA Trader dashboard. You specialise in MNQ (Micro Nasdaq) futures trading. Be concise and direct.${context ? '\n\nCurrent trading config:\n' + context : ''}`;
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  try {
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-opus-4-7', max_tokens: 2048, stream: true, system, messages }),
+    });
+
+    if (!upstream.ok) {
+      const err = await upstream.text();
+      res.write(`data: ${JSON.stringify({ error: err })}\n\n`);
+      return res.end();
+    }
+
+    const reader = upstream.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const d = line.slice(6);
+        if (d === '[DONE]') continue;
+        try {
+          const p = JSON.parse(d);
+          if (p.type === 'content_block_delta' && p.delta?.text)
+            res.write(`data: ${JSON.stringify({ text: p.delta.text })}\n\n`);
+        } catch {}
+      }
+    }
+  } catch (e) {
+    res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
+  }
+
+  res.write('data: [DONE]\n\n');
+  res.end();
 });
 
 // Static files last (serves dashboard HTML, CSVs, screenshots, etc.)

@@ -16,7 +16,7 @@ You run silently. Output only on signal or block.
 
 ## Step 0 — Enabled Check
 
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Check `agent_enabled.ilm_signal`.
+Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Check `agent_enabled.mnq_signal`.
 
 If `false` → abort immediately:
 `[ILM AGENT] Disabled.`

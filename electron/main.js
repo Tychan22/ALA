@@ -187,6 +187,7 @@ function createMainWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload-main.js'),
     },
   });
   mainWindow.loadURL(`http://localhost:${DASHBOARD_PORT}/live_dashboard.html`);
@@ -194,6 +195,8 @@ function createMainWindow() {
 }
 
 // ─── IPC — password check ─────────────────────────────────────────────────────
+ipcMain.handle('get-version', () => app.getVersion());
+
 ipcMain.handle('check-password', (_event, input) => {
   const config = loadConfig();
   return input === config.password;
@@ -201,6 +204,7 @@ ipcMain.handle('check-password', (_event, input) => {
 
 ipcMain.on('login-success', async () => {
   try {
+    launchTradingView();
     await waitForDashboard();
     createMainWindow();       // open main FIRST
     loginWindow?.close();     // then close login — no window-all-closed gap
@@ -218,24 +222,21 @@ function setupAutoUpdater() {
   if (!app.isPackaged) return; // skip in dev
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-available', () => {
+    mainWindow?.webContents.send('update-available');
+  });
   autoUpdater.on('update-downloaded', () => {
-    dialog.showMessageBox({
-      type: 'info',
-      title: 'Update Ready',
-      message: 'A new version of ALA Trader has been downloaded. Restart to apply the update.',
-      buttons: ['Restart Now', 'Later'],
-    }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall();
-    });
+    mainWindow?.webContents.send('update-ready');
   });
   autoUpdater.checkForUpdates().catch(err => console.log('[ALA] Update check failed:', err.message));
 }
+
+ipcMain.on('install-update', () => autoUpdater.quitAndInstall());
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   patchAgentPaths();
   startDashboard();
-  launchTradingView();
   createLoginWindow();
   setupAutoUpdater();
 });
