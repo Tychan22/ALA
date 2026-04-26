@@ -59,11 +59,11 @@ app.post('/api/:file', (req, res) => {
   }
 });
 
-// Version endpoint — reads from electron/package.json
+// Version endpoint — reads version.json written by main.js at startup
 app.get('/api/version', (_req, res) => {
   try {
-    const pkg = JSON.parse(readFileSync(join(__dirname, 'electron', 'package.json'), 'utf8'));
-    res.json({ version: pkg.version });
+    const v = JSON.parse(readFileSync(join(__dirname, 'version.json'), 'utf8'));
+    res.json({ version: v.version });
   } catch {
     res.json({ version: '1.0' });
   }

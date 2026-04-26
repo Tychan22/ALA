@@ -224,6 +224,8 @@ function setupAutoUpdater() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  // Write version so dashboard.js can serve it
+  fs.writeFileSync(path.join(PROJECT_ROOT, 'version.json'), JSON.stringify({ version: app.getVersion() }));
   patchAgentPaths();
   startDashboard();
   launchTradingView();
