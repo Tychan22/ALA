@@ -10,7 +10,7 @@ const { autoUpdater }  = require('electron-updater');
 const PROJECT_ROOT = app.isPackaged
   ? path.join(process.resourcesPath, 'app')
   : path.join(__dirname, '..');
-const CONFIG_FILE  = path.join(__dirname, 'app-config.json');
+const CONFIG_FILE  = path.join(app.getPath('userData'), 'app-config.json');
 const DASHBOARD_PORT = 8080;
 
 // ─── Cross-platform path patching ────────────────────────────────────────────
