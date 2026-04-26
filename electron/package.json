@@ -1,6 +1,6 @@
 {
   "name": "ala-trader",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ALA Trader — Autonomous Learning AI",
   "main": "main.js",
   "scripts": {

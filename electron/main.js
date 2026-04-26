@@ -85,12 +85,15 @@ function findTradingViewPath() {
   ];
   const found = classic.find(p => fs.existsSync(p));
   if (found) return found;
-  // MSIX / WindowsApps install — scan for versioned folder
+  // MSIX / Windows Store install — use PowerShell to get install location
   try {
-    const windowsApps = 'C:\\Program Files\\WindowsApps';
-    const entries = fs.readdirSync(windowsApps);
-    const tvDir = entries.find(e => e.startsWith('TradingView.Desktop'));
-    if (tvDir) return path.join(windowsApps, tvDir, 'TradingView.exe');
+    const loc = require('child_process')
+      .execSync(`powershell -command "(Get-AppxPackage -Name 'TradingView.Desktop').InstallLocation"`, { timeout: 5000 })
+      .toString().trim();
+    if (loc) {
+      const exePath = path.join(loc, 'TradingView.exe');
+      if (fs.existsSync(exePath)) return exePath;
+    }
   } catch {}
   return null;
 }
