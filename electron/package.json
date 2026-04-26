@@ -63,7 +63,8 @@
       "provider": "github",
       "owner": "Tychan22",
       "repo": "ALA",
-      "private": true
+      "private": true,
+      "releaseType": "release"
     }
   },
   "devDependencies": {
