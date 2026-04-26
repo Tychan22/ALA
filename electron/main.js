@@ -233,6 +233,9 @@ function setupAutoUpdater() {
     });
   });
   autoUpdater.checkForUpdates().catch(err => console.log('[ALA] Update check failed:', err.message));
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 30 * 60 * 1000);
 }
 
 ipcMain.on('install-update', () => autoUpdater.quitAndInstall());
