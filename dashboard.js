@@ -59,14 +59,9 @@ app.post('/api/:file', (req, res) => {
   }
 });
 
-// Version endpoint — reads version.json written by main.js at startup
+// Version endpoint — version passed via env var from main.js
 app.get('/api/version', (_req, res) => {
-  try {
-    const v = JSON.parse(readFileSync(join(__dirname, 'version.json'), 'utf8'));
-    res.json({ version: v.version });
-  } catch {
-    res.json({ version: '1.0' });
-  }
+  res.json({ version: process.env.ALA_VERSION || '1.0' });
 });
 
 // Static files last (serves dashboard HTML, CSVs, screenshots, etc.)

@@ -123,7 +123,7 @@ function startDashboard() {
   dashboardProcess = spawn(process.execPath, [path.join(PROJECT_ROOT, 'dashboard.js')], {
     cwd: PROJECT_ROOT,
     stdio: 'pipe',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ALA_VERSION: app.getVersion() }
   });
   dashboardProcess.stdout.on('data', d => console.log('[dashboard]', d.toString().trim()));
   dashboardProcess.stderr.on('data', d => console.error('[dashboard]', d.toString().trim()));
@@ -224,8 +224,6 @@ function setupAutoUpdater() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  // Write version so dashboard.js can serve it
-  fs.writeFileSync(path.join(PROJECT_ROOT, 'version.json'), JSON.stringify({ version: app.getVersion() }));
   patchAgentPaths();
   startDashboard();
   launchTradingView();
