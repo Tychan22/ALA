@@ -61,7 +61,7 @@ function patchAgentPaths() {
 // ─── Config (password lives here) ────────────────────────────────────────────
 function loadConfig() {
   if (!fs.existsSync(CONFIG_FILE)) {
-    const defaults = { password: 'changeme' };
+    const defaults = { password: '4545' };
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(defaults, null, 2));
     return defaults;
   }
