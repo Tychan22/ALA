@@ -17,6 +17,11 @@ const FILES = {
 // GET /api/tv-status — probe TradingView CDP port 9222
 import http from 'http';
 
+// Version endpoint — must be before /api/:file wildcard
+app.get('/api/version', (_req, res) => {
+  res.json({ version: process.env.ALA_VERSION || '1.0' });
+});
+
 app.get('/api/tv-status', (req, res) => {
   const probe = http.get('http://localhost:9222/json', (r) => {
     let data = '';
@@ -57,11 +62,6 @@ app.post('/api/:file', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
-
-// Version endpoint — version passed via env var from main.js
-app.get('/api/version', (_req, res) => {
-  res.json({ version: process.env.ALA_VERSION || '1.0' });
 });
 
 // Static files last (serves dashboard HTML, CSVs, screenshots, etc.)
