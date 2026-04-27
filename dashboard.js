@@ -8,6 +8,76 @@ import { platform } from 'os';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// ─── Agent helpers ─────────────────────────────────────────────────────────────
+function findClaude() {
+  const candidates = [
+    process.env.HOME && `${process.env.HOME}/.local/bin/claude`,
+    '/usr/local/bin/claude',
+    '/opt/homebrew/bin/claude',
+  ].filter(Boolean);
+  return candidates.find(p => existsSync(p)) || 'claude';
+}
+const CLAUDE_BIN = findClaude();
+
+function agentPrompt(file) {
+  const raw = readFileSync(join(__dirname, 'agents', file), 'utf8');
+  const m = raw.match(/^---[\s\S]*?---\s*\n([\s\S]*)$/);
+  return m ? m[1].trim() : raw;
+}
+
+function readRules() {
+  try { return JSON.parse(readFileSync(join(__dirname, 'rules.json'), 'utf8')); } catch { return {}; }
+}
+
+// ─── Autonomous scheduler ──────────────────────────────────────────────────────
+const agentLastRun = {};
+
+function nycNow() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+}
+function isWeekday(d) { const w = d.getDay(); return w >= 1 && w <= 5; }
+function minsOf(d)    { return d.getHours() * 60 + d.getMinutes(); }
+
+const SCHED = {
+  mnq_signal:  { key: 'mnq_signal',  start: 9*60+45, end: 12*60,    interval: 3*60*1000,          file: 'signal-agent.md',   prompt: 'Run signal scan' },
+  mnq_monitor: { key: 'mnq_signal',  start: 9*60+30, end: 16*60,    interval: 5*60*1000,          file: 'trade-monitor.md',  prompt: 'Run trade monitor' },
+  learning:    { key: '_any',         start: 16*60+32, end: 16*60+37, interval: 23*60*60*1000,     file: 'learning-agent.md', prompt: 'Run learning agent' },
+};
+
+function spawnAgent(label, file, prompt) {
+  let system;
+  try { system = agentPrompt(file); } catch (e) { console.error(`[scheduler] cannot read ${file}:`, e.message); return; }
+  console.log(`[ALA scheduler] → ${label}`);
+  agentLastRun[label] = Date.now();
+  const child = spawn(CLAUDE_BIN, [
+    '--print', '--output-format', 'text',
+    '--system-prompt', system,
+    '--dangerously-skip-permissions',
+    '-p', prompt,
+  ], { cwd: __dirname, env: { ...process.env }, stdio: 'pipe' });
+  child.stdout.on('data', d => process.stdout.write(`[${label}] ${d}`));
+  child.stderr.on('data', d => process.stderr.write(`[${label}!] ${d}`));
+  child.on('close', code => console.log(`[ALA scheduler] ${label} done (${code})`));
+}
+
+function tickScheduler() {
+  const nyc = nycNow();
+  if (!isWeekday(nyc)) return;
+  const min = minsOf(nyc);
+  const enabled = readRules().agent_enabled || {};
+  const now = Date.now();
+
+  for (const [label, cfg] of Object.entries(SCHED)) {
+    if (min < cfg.start || min >= cfg.end) continue;
+    const on = cfg.key === '_any' ? (enabled.mnq_signal || enabled.gold_signal) : enabled[cfg.key];
+    if (!on) continue;
+    if (now - (agentLastRun[label] || 0) < cfg.interval) continue;
+    spawnAgent(label, cfg.file, cfg.prompt);
+  }
+}
+
+setInterval(tickScheduler, 60_000);
+
 app.use(express.json());
 
 const FILES = {
@@ -96,16 +166,67 @@ app.get('/api/:file', (req, res) => {
   }
 });
 
-// POST /api/:file — write a JSON config file
-app.post('/api/:file', (req, res) => {
-  const fp = FILES[req.params.file];
-  if (!fp) return res.status(404).json({ error: 'unknown file' });
-  try {
-    writeFileSync(fp, JSON.stringify(req.body, null, 2));
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+// POST /api/command — run a backtest command via spawned claude subprocess
+app.post('/api/command', (req, res) => {
+  const { command } = req.body;
+  const cmd = command?.trim().toLowerCase();
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  const sseText = t => res.write(`data: ${JSON.stringify({ text: t })}\n\n`);
+  const sseDone = ()  => { res.write('data: [DONE]\n\n'); res.end(); };
+
+  // Simple state toggles — no agent spawn needed
+  if (cmd === 'backtest on' || cmd === 'backtest off') {
+    const stateFile = join(__dirname, 'backtest_state.json');
+    const active = cmd === 'backtest on';
+    try {
+      const s = JSON.parse(readFileSync(stateFile, 'utf8'));
+      s.active = active;
+      writeFileSync(stateFile, JSON.stringify(s, null, 2));
+    } catch {
+      writeFileSync(stateFile, JSON.stringify({ active, pending_trade: null }, null, 2));
+    }
+    sseText(active ? '[BACKTEST] Mode ON — say pic1 to log your first setup.' : '[BACKTEST] Mode OFF.');
+    return sseDone();
   }
+
+  const allowed = ['pic1', 'pic2', 'cancel', 'cancel trade'];
+  if (!allowed.includes(cmd)) {
+    sseText('Unknown command: ' + command);
+    return sseDone();
+  }
+
+  let system;
+  try { system = agentPrompt('backtest-agent.md'); }
+  catch (e) { sseText('Error loading backtest agent: ' + e.message); return sseDone(); }
+
+  const child = spawn(CLAUDE_BIN, [
+    '--print',
+    '--output-format', 'stream-json',
+    '--include-partial-messages',
+    '--system-prompt', system,
+    '--dangerously-skip-permissions',
+    '-p', command.trim(),
+  ], { cwd: __dirname, env: { ...process.env } });
+
+  let buf = '';
+  child.stdout.on('data', chunk => {
+    buf += chunk.toString();
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line);
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text)
+          res.write(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`);
+      } catch {}
+    }
+  });
+  child.on('close', () => sseDone());
 });
 
 // POST /api/claude — stream a Claude response
@@ -119,14 +240,38 @@ app.post('/api/claude', async (req, res) => {
 
   const { messages } = req.body;
 
-  let context = '';
+  // Build rich context snapshot
+  const ctx = [];
   try {
-    const strategies = JSON.parse(readFileSync(FILES.strategies, 'utf8'));
-    const rules      = JSON.parse(readFileSync(FILES.rules,      'utf8'));
-    context = `Strategies:\n${JSON.stringify(strategies, null, 2)}\n\nRules:\n${JSON.stringify(rules, null, 2)}`;
+    ctx.push('## Strategies & Rules');
+    ctx.push(JSON.stringify(JSON.parse(readFileSync(FILES.strategies, 'utf8')), null, 2));
+    ctx.push(JSON.stringify(readRules(), null, 2));
+  } catch {}
+  try {
+    const learning = JSON.parse(readFileSync(FILES.learning, 'utf8'));
+    ctx.push('\n## MNQ Learning Summary');
+    ctx.push(`Win rate: ${learning.win_rate ?? '—'} | Trades: ${learning.total_trades ?? 0} | Avg RR: ${learning.avg_rr ?? '—'}`);
+    if (learning.insights?.length) ctx.push('Insights: ' + learning.insights.slice(-3).join(' | '));
+  } catch {}
+  try {
+    const goldL = JSON.parse(readFileSync(join(__dirname, 'gold_learning.json'), 'utf8'));
+    ctx.push('\n## Gold Learning Summary');
+    ctx.push(`Win rate: ${goldL.win_rate ?? '—'} | Trades: ${goldL.total_trades ?? 0}`);
+  } catch {}
+  try {
+    const status = JSON.parse(readFileSync(join(__dirname, 'agent_status.json'), 'utf8'));
+    ctx.push('\n## Agent Last-Run Times');
+    for (const [k, v] of Object.entries(status)) ctx.push(`${k}: ${v ?? 'never'}`);
+  } catch {}
+  try {
+    const csv = readFileSync(join(__dirname, 'live_log.csv'), 'utf8').trim().split('\n');
+    const recent = csv.slice(-11).join('\n'); // header + last 10
+    ctx.push('\n## Recent Live Trades (last 10 rows)');
+    ctx.push(recent);
   } catch {}
 
-  const system = `You are ALA (Autonomous Learning AI), an AI trading assistant built into the ALA Trader dashboard. You specialise in MNQ (Micro Nasdaq) futures trading. Be concise and direct.${context ? '\n\nCurrent trading config:\n' + context : ''}`;
+  const context = ctx.join('\n');
+  const system = `You are ALA (Autonomous Learning AI), a personal AI trading assistant embedded in the ALA Trader dashboard. You know the user's full trading system state — strategies, rules, recent trades, learning insights, and agent status. Be concise and direct. Today is ${new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.\n\n${context}`;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -170,6 +315,18 @@ app.post('/api/claude', async (req, res) => {
 
   res.write('data: [DONE]\n\n');
   res.end();
+});
+
+// POST /api/:file — write a JSON config file (wildcard — must stay after all specific POST routes)
+app.post('/api/:file', (req, res) => {
+  const fp = FILES[req.params.file];
+  if (!fp) return res.status(404).json({ error: 'unknown file' });
+  try {
+    writeFileSync(fp, JSON.stringify(req.body, null, 2));
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Static files last (serves dashboard HTML, CSVs, screenshots, etc.)

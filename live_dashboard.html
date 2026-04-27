@@ -2623,7 +2623,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
 
   #ala-chat-panel {
     position: fixed; bottom: 96px; right: 28px; z-index: 1999;
-    width: 380px; height: 520px;
+    width: 480px; height: 620px;
     background: rgba(8, 11, 20, 0.97);
     border: 1px solid rgba(34,211,238,0.2);
     border-radius: 16px;
@@ -2660,6 +2660,14 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
   .ala-msg .bubble {
     padding: 9px 13px; border-radius: 12px; font-size: 13px; line-height: 1.5;
     white-space: pre-wrap; word-break: break-word;
+  }
+  .ala-msg.assistant .bubble code {
+    background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.15);
+    border-radius: 4px; padding: 1px 5px; font-family: 'SF Mono', monospace; font-size: 12px;
+  }
+  .ala-msg.command .bubble {
+    background: rgba(250,204,21,0.08); border-color: rgba(250,204,21,0.25); color: #fde68a;
+    font-family: 'SF Mono', monospace; font-size: 12px;
   }
   .ala-msg.user .bubble { background: rgba(34,211,238,0.15); border: 1px solid rgba(34,211,238,0.2); color: #e2e8f0; border-bottom-right-radius: 4px; }
   .ala-msg.assistant .bubble { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); color: #cbd5e1; border-bottom-left-radius: 4px; }
@@ -2704,14 +2712,15 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
     <div class="dot"></div>
     <div class="title">ALA</div>
     <div class="sub">Autonomous Learning AI</div>
+    <button onclick="alaClear()" title="Clear chat" style="background:none;border:none;cursor:pointer;color:#475569;font-size:16px;padding:2px 6px;border-radius:6px;line-height:1;" onmouseover="this.style.color='#94a3b8'" onmouseout="this.style.color='#475569'">⌫</button>
   </div>
   <div id="ala-chat-messages">
     <div class="ala-msg assistant">
-      <div class="bubble">Hey! I'm ALA. Ask me anything about your trades, setups, or market conditions.</div>
+      <div class="bubble">Hey! I'm ALA. I know your full trading setup — strategies, recent trades, P&amp;L, and agent status. Ask me anything, or type <code>pic1</code>, <code>pic2</code>, <code>cancel</code>, <code>backtest on/off</code>.</div>
     </div>
   </div>
   <div id="ala-chat-input-row">
-    <textarea id="ala-chat-input" placeholder="Ask ALA..." rows="1"
+    <textarea id="ala-chat-input" placeholder="Ask ALA or type a command..." rows="1"
       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();alaSubmit();}
                  this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';"
       oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px';"></textarea>
@@ -2727,11 +2736,27 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
   let _alaOpen = false;
   let _alaBusy = false;
 
+  const BACKTEST_CMD = /^(pic1|pic2|cancel(?: trade)?|backtest (on|off))$/i;
+
+  function renderMd(text) {
+    return text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+      .replace(/`([^`\n]+)`/g,'<code>$1</code>')
+      .replace(/\n/g,'<br>');
+  }
+
   window.toggleAlaChat = function() {
     _alaOpen = !_alaOpen;
     document.getElementById('ala-chat-panel').classList.toggle('open', _alaOpen);
     document.getElementById('ala-chat-btn').classList.toggle('open', _alaOpen);
     if (_alaOpen) setTimeout(() => document.getElementById('ala-chat-input').focus(), 220);
+  };
+
+  window.alaClear = function() {
+    _alaMessages.length = 0;
+    const msgs = document.getElementById('ala-chat-messages');
+    msgs.innerHTML = '<div class="ala-msg assistant"><div class="bubble">Chat cleared.</div></div>';
   };
 
   window.alaSubmit = async function() {
@@ -2743,18 +2768,26 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
     input.value = '';
     input.style.height = 'auto';
 
-    _alaMessages.push({ role: 'user', content: text });
-    alaAddMsg('user', text);
+    const isCmd = BACKTEST_CMD.test(text);
+    if (isCmd) {
+      alaAddMsg('command', text);
+    } else {
+      _alaMessages.push({ role: 'user', content: text });
+      alaAddMsg('user', text);
+    }
 
     const typing = alaAddTyping();
     _alaBusy = true;
     document.getElementById('ala-chat-send').disabled = true;
 
     try {
-      const res = await fetch('/api/claude', {
+      const endpoint = isCmd ? '/api/command' : '/api/claude';
+      const body     = isCmd ? { command: text } : { messages: _alaMessages };
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: _alaMessages }),
+        body: JSON.stringify(body),
       });
 
       typing.remove();
@@ -2765,7 +2798,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
         return;
       }
 
-      const bubble = alaAddMsg('assistant', '');
+      const bubble = alaAddMsgHtml('assistant', '');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let fullText = '';
@@ -2783,12 +2816,12 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
           if (data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            if (parsed.text) { fullText += parsed.text; bubble.textContent = fullText; alaScroll(); }
+            if (parsed.text) { fullText += parsed.text; bubble.innerHTML = renderMd(fullText); alaScroll(); }
           } catch {}
         }
       }
 
-      _alaMessages.push({ role: 'assistant', content: fullText });
+      if (!isCmd) _alaMessages.push({ role: 'assistant', content: fullText });
 
     } catch (e) {
       typing.remove();
@@ -2807,6 +2840,19 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.textContent = text;
+    wrap.appendChild(bubble);
+    msgs.appendChild(wrap);
+    alaScroll();
+    return bubble;
+  }
+
+  function alaAddMsgHtml(role, html) {
+    const msgs = document.getElementById('ala-chat-messages');
+    const wrap = document.createElement('div');
+    wrap.className = 'ala-msg ' + role;
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = html;
     wrap.appendChild(bubble);
     msgs.appendChild(wrap);
     alaScroll();

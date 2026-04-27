@@ -222,6 +222,14 @@ function setupAutoUpdater() {
   if (!app.isPackaged) return; // skip in dev
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Override the embedded app-update.yml — old builds had private:true which
+  // required a GH_TOKEN that was never present. Repo is public; no token needed.
+  autoUpdater.setFeedURL({
+    provider: 'github',
+    owner: 'Tychan22',
+    repo: 'ALA',
+    releaseType: 'release',
+  });
   autoUpdater.on('update-downloaded', () => {
     dialog.showMessageBox({
       type: 'info',
