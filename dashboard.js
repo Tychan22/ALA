@@ -114,6 +114,15 @@ const TV_TOOLS = [
     input_schema: { type: 'object', properties: {
       study_filter: { type: 'string', description: 'Filter by indicator name substring' },
     }}},
+  { name: 'read_file', description: 'Read a file from the project directory (JSON, CSV, etc.)',
+    input_schema: { type: 'object', required: ['path'],
+      properties: { path: { type: 'string', description: 'Absolute path or filename within project directory' } }}},
+  { name: 'write_file', description: 'Write content to a file in the project directory.',
+    input_schema: { type: 'object', required: ['path', 'content'],
+      properties: {
+        path:    { type: 'string', description: 'Absolute path or filename within project directory' },
+        content: { type: 'string', description: 'Full file content to write' },
+      }}},
 ];
 
 async function executeTVTool(name, input) {
@@ -141,6 +150,18 @@ async function executeTVTool(name, input) {
       case 'draw_shape':            return await drawShape(input);
       case 'draw_list':             return await listDrawings();
       case 'draw_get_properties':   return await getProperties(input);
+      case 'read_file': {
+        const p = input.path.startsWith('/') ? input.path : join(__dirname, input.path);
+        if (!p.startsWith(__dirname)) return { success: false, error: 'Path outside project directory' };
+        try { return { success: true, content: readFileSync(p, 'utf8') }; }
+        catch (e) { return { success: false, error: e.message }; }
+      }
+      case 'write_file': {
+        const p = input.path.startsWith('/') ? input.path : join(__dirname, input.path);
+        if (!p.startsWith(__dirname)) return { success: false, error: 'Path outside project directory' };
+        try { writeFileSync(p, input.content, 'utf8'); return { success: true }; }
+        catch (e) { return { success: false, error: e.message }; }
+      }
       default: return { success: false, error: `Unknown tool: ${name}` };
     }
   } catch (e) {
