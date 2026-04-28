@@ -169,6 +169,22 @@ app.get('/api/tv-status', (req, res) => {
   probe.setTimeout(1500, () => { probe.destroy(); res.json({ connected: false, tv_tab: false }); });
 });
 
+// GET /api/license — return license key from userData app-config
+app.get('/api/license', (_req, res) => {
+  const candidates = [
+    process.env.ALA_USER_DATA && join(process.env.ALA_USER_DATA, 'app-config.json'),
+    join(__dirname, 'electron', 'app-config.json'),
+    join(__dirname, 'app-config.json'),
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf8'));
+      if (cfg.licenseKey) return res.json({ licenseKey: cfg.licenseKey });
+    } catch {}
+  }
+  res.json({ licenseKey: null });
+});
+
 // GET /api/:file — read a JSON config file
 app.get('/api/:file', (req, res) => {
   const fp = FILES[req.params.file];

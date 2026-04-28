@@ -1121,6 +1121,16 @@
         <strong>Switching to MNQ futures?</strong> Change Symbol to <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:3px">CME_MINI:MNQ1!</code> and set Point Value to <code style="background:rgba(0,0,0,0.3);padding:1px 5px;border-radius:3px">2</code>. Agents will resize contracts automatically.
       </div>
 
+      <div class="settings-section-label" style="margin-top:22px">License</div>
+      <div class="settings-grid full">
+        <div class="form-group">
+          <label class="form-label">License Key</label>
+          <input class="form-input" id="cfg-license-key" type="text" readonly
+            style="color:var(--text-dim);cursor:default;letter-spacing:1.5px;font-family:'JetBrains Mono',monospace;font-size:12px"
+            value="—"/>
+        </div>
+      </div>
+
       <div class="btn-row" style="margin-top:14px;justify-content:flex-end;gap:8px">
         <button class="save-btn" style="background:transparent;color:var(--text-dim);border-color:var(--border)" onclick="closeSettingsDirect()">Cancel</button>
         <button class="save-btn" onclick="saveSettings()">Save Settings</button>
@@ -2384,6 +2394,9 @@ function openSettings(){
   el('cfg-mnq-pv').value      = r.mnq?.paper_trading?.point_value ?? 1;
   el('cfg-gold-symbol').value = r.gold?.symbol || '';
   el('cfg-gold-pv').value     = r.gold?.paper_trading?.point_value ?? 1;
+  fetch('/api/license').then(r=>r.json()).then(d=>{
+    el('cfg-license-key').value = d.licenseKey || '—';
+  }).catch(()=>{});
   el('settings-modal').classList.add('active');
 }
 async function saveSettings(){
