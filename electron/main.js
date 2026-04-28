@@ -3,6 +3,7 @@ const { spawn, exec }  = require('child_process');
 const path             = require('path');
 const fs               = require('fs');
 const http             = require('http');
+const crypto           = require('crypto');
 const { autoUpdater }  = require('electron-updater');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -31,17 +32,15 @@ function getAllMdFiles(dir) {
 }
 
 function patchAgentPaths() {
-  // Normalise to forward slashes so the same string works on all platforms
   const currentPath = PROJECT_ROOT.split(path.sep).join('/');
 
-  // userData persists across updates and is always writable
   const patchRecord = path.join(app.getPath('userData'), 'path-config.json');
   let previousPath = ORIGINAL_DEV_PATH;
   if (fs.existsSync(patchRecord)) {
     try { previousPath = JSON.parse(fs.readFileSync(patchRecord, 'utf8')).data_dir || previousPath; } catch {}
   }
 
-  if (currentPath === previousPath) return; // nothing to do
+  if (currentPath === previousPath) return;
 
   console.log(`[ALA] Patching agent paths: ${previousPath} → ${currentPath}`);
   const dirs = [path.join(PROJECT_ROOT, 'agents'), path.join(PROJECT_ROOT, 'skills')];
@@ -58,14 +57,37 @@ function patchAgentPaths() {
   fs.writeFileSync(patchRecord, JSON.stringify({ data_dir: currentPath }, null, 2));
 }
 
-// ─── Config (password lives here) ────────────────────────────────────────────
+// ─── License key verification ─────────────────────────────────────────────────
+const _K = ['ALA-TRADER', '-2026-MASTER', '-SECRET-V2'];
+const SECRET = _K.join('');
+
+function verifyKey(key) {
+  const parts = (key || '').toUpperCase().trim().split('-');
+  if (parts.length !== 4) return false;
+  const [tag, a, b, c] = parts;
+  if (tag.length !== 8 || a.length !== 4 || b.length !== 4 || c.length !== 4) return false;
+  const hex = crypto.createHmac('sha256', SECRET).update(tag).digest('hex').toUpperCase();
+  const expected = `${hex.slice(0, 4)}-${hex.slice(4, 8)}-${hex.slice(8, 12)}`;
+  const provided  = `${a}-${b}-${c}`;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(provided));
+  } catch { return false; }
+}
+
+// ─── Config ───────────────────────────────────────────────────────────────────
 function loadConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) {
-    const defaults = { password: '4545' };
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(defaults, null, 2));
-    return defaults;
-  }
-  return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  if (!fs.existsSync(CONFIG_FILE)) return {};
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch { return {}; }
+}
+
+function saveConfig(data) {
+  const existing = loadConfig();
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify({ ...existing, ...data }, null, 2));
+}
+
+function hasValidConfig() {
+  const cfg = loadConfig();
+  return !!(cfg.licenseKey && cfg.anthropicKey && verifyKey(cfg.licenseKey));
 }
 
 // ─── Launch TradingView with CDP port ────────────────────────────────────────
@@ -77,7 +99,6 @@ function findTradingViewPath() {
     ];
     return candidates.find(p => fs.existsSync(p)) || null;
   }
-  // Win32: check classic install paths first
   const classic = [
     path.join(process.env.LOCALAPPDATA || '', 'Programs', 'TradingView', 'TradingView.exe'),
     path.join(process.env.LOCALAPPDATA || '', 'TradingView', 'TradingView.exe'),
@@ -85,7 +106,6 @@ function findTradingViewPath() {
   ];
   const found = classic.find(p => fs.existsSync(p));
   if (found) return found;
-  // MSIX / Windows Store install — use PowerShell to get install location
   try {
     const loc = require('child_process')
       .execSync(`powershell -command "(Get-AppxPackage -Name 'TradingView.Desktop').InstallLocation"`, { timeout: 5000 })
@@ -100,7 +120,6 @@ function findTradingViewPath() {
 
 function launchTradingView() {
   if (process.platform === 'win32') {
-    // UWP apps can't be launched via .exe — use COM activation via PowerShell
     try { exec('taskkill /F /IM TradingView.exe', { timeout: 3000 }); } catch {}
     setTimeout(() => {
       const script = path.join(PROJECT_ROOT, 'launch_tv.ps1');
@@ -111,7 +130,6 @@ function launchTradingView() {
     return;
   }
 
-  // macOS — direct binary launch
   const tvPath = findTradingViewPath();
   if (!tvPath) {
     console.log('[ALA] TradingView not found — open manually with --remote-debugging-port=9222');
@@ -126,13 +144,12 @@ function launchTradingView() {
 }
 
 // ─── Start dashboard.js server ────────────────────────────────────────────────
-// ELECTRON_RUN_AS_NODE=1 makes the Electron binary act as Node.js in packaged mode
 let dashboardProcess = null;
 function startDashboard() {
   dashboardProcess = spawn(process.execPath, [path.join(PROJECT_ROOT, 'dashboard.js')], {
     cwd: PROJECT_ROOT,
     stdio: 'pipe',
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ALA_VERSION: app.getVersion() }
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1', ALA_VERSION: app.getVersion(), ALA_USER_DATA: app.getPath('userData') }
   });
   dashboardProcess.stdout.on('data', d => console.log('[dashboard]', d.toString().trim()));
   dashboardProcess.stderr.on('data', d => console.error('[dashboard]', d.toString().trim()));
@@ -157,23 +174,24 @@ function waitForDashboard(retries = 20) {
 }
 
 // ─── Windows ──────────────────────────────────────────────────────────────────
-let loginWindow = null;
+let setupWindow = null;
 let mainWindow  = null;
 
-function createLoginWindow() {
-  loginWindow = new BrowserWindow({
-    width: 420,
-    height: 320,
+function createSetupWindow(mode = 'setup') {
+  setupWindow = new BrowserWindow({
+    width: 440,
+    height: mode === 'loading' ? 280 : 420,
     resizable: false,
     frame: false,
     titleBarStyle: 'hidden',
     backgroundColor: '#060810',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload-setup.js'),
       contextIsolation: true,
     },
   });
-  loginWindow.loadFile(path.join(__dirname, 'login.html'));
+  // Pass mode as hash so the renderer can set initial state before first paint
+  setupWindow.loadFile(path.join(__dirname, 'setup.html'), { hash: mode });
 }
 
 function createMainWindow() {
@@ -194,36 +212,42 @@ function createMainWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-// ─── IPC — password check ─────────────────────────────────────────────────────
-ipcMain.handle('get-version', () => app.getVersion());
-
-ipcMain.handle('check-password', (_event, input) => {
-  const config = loadConfig();
-  return input === config.password;
-});
-
-ipcMain.on('login-success', async () => {
+// ─── Launch sequence (shared between first-run and subsequent runs) ───────────
+async function launchApp() {
   try {
     launchTradingView();
+    setupWindow?.webContents.send('setup-status', 'Starting dashboard...');
     await waitForDashboard();
-    createMainWindow();       // open main FIRST
-    loginWindow?.close();     // then close login — no window-all-closed gap
-    loginWindow = null;
+    createMainWindow();
+    setupWindow?.close();
+    setupWindow = null;
   } catch (e) {
     console.error('[ALA] Dashboard failed to start:', e.message);
     app.quit();
   }
+}
+
+// ─── IPC ──────────────────────────────────────────────────────────────────────
+ipcMain.handle('get-version', () => app.getVersion());
+
+ipcMain.handle('validate-license', (_event, key) => verifyKey(key));
+
+ipcMain.handle('save-setup', (_event, { licenseKey, anthropicKey }) => {
+  if (!verifyKey(licenseKey)) return { ok: false, error: 'Invalid license key' };
+  saveConfig({ licenseKey, anthropicKey });
+  // Switch setup window to loading state, then launch async
+  setupWindow?.webContents.send('set-mode', 'loading');
+  setImmediate(() => launchApp());
+  return { ok: true };
 });
 
 ipcMain.on('quit-app', () => app.quit());
 
-// ─── App lifecycle ────────────────────────────────────────────────────────────
+// ─── Auto-updater ─────────────────────────────────────────────────────────────
 function setupAutoUpdater() {
-  if (!app.isPackaged) return; // skip in dev
+  if (!app.isPackaged) return;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  // Override the embedded app-update.yml — old builds had private:true which
-  // required a GH_TOKEN that was never present. Repo is public; no token needed.
   autoUpdater.setFeedURL({
     provider: 'github',
     owner: 'Tychan22',
@@ -248,12 +272,19 @@ function setupAutoUpdater() {
 
 ipcMain.on('install-update', () => autoUpdater.quitAndInstall());
 
+// ─── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   patchAgentPaths();
   startDashboard();
-  createLoginWindow();
   setupAutoUpdater();
+
+  if (hasValidConfig()) {
+    createSetupWindow('loading');
+    launchApp();
+  } else {
+    createSetupWindow('setup');
+  }
 });
 
 app.on('window-all-closed', () => {

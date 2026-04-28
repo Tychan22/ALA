@@ -2736,7 +2736,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
   let _alaOpen = false;
   let _alaBusy = false;
 
-  const BACKTEST_CMD = /^(pic1|pic2|cancel(?: trade)?|backtest (on|off))$/i;
+  const BACKTEST_CMD = /^(pic\s*[12]|cancel(?: trade)?|backtest (on|off))$/i;
 
   function renderMd(text) {
     return text
@@ -2769,6 +2769,9 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
     input.style.height = 'auto';
 
     const isCmd = BACKTEST_CMD.test(text);
+    // Normalise "pic 1"/"pic 2" → "pic1"/"pic2" before sending to agent
+    const cmdText = isCmd ? text.replace(/pic\s+([12])/i, 'pic$1').trim().toLowerCase() : text;
+
     if (isCmd) {
       alaAddMsg('command', text);
     } else {
@@ -2782,7 +2785,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
 
     try {
       const endpoint = isCmd ? '/api/command' : '/api/claude';
-      const body     = isCmd ? { command: text } : { messages: _alaMessages };
+      const body     = isCmd ? { command: cmdText } : { messages: _alaMessages };
 
       const res = await fetch(endpoint, {
         method: 'POST',

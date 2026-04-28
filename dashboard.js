@@ -9,15 +9,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // ─── Agent helpers ─────────────────────────────────────────────────────────────
-function findClaude() {
+function findBin(name) {
   const candidates = [
-    process.env.HOME && `${process.env.HOME}/.local/bin/claude`,
-    '/usr/local/bin/claude',
-    '/opt/homebrew/bin/claude',
+    process.env.HOME && `${process.env.HOME}/.local/bin/${name}`,
+    `/usr/local/bin/${name}`,
+    `/opt/homebrew/bin/${name}`,
+    `/usr/bin/${name}`,
   ].filter(Boolean);
-  return candidates.find(p => existsSync(p)) || 'claude';
+  return candidates.find(p => existsSync(p)) || name;
 }
-const CLAUDE_BIN = findClaude();
+const CLAUDE_BIN = findBin('claude');
+
+// Build a rich PATH for subprocesses — GUI Electron launch has a minimal PATH
+// that won't find node (needed by the TradingView MCP server) or claude.
+function richEnv() {
+  const extra = [
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    process.env.HOME && `${process.env.HOME}/.local/bin`,
+  ].filter(Boolean).join(':');
+  return {
+    ...process.env,
+    PATH: extra + (process.env.PATH ? ':' + process.env.PATH : ''),
+  };
+}
 
 function agentPrompt(file) {
   const raw = readFileSync(join(__dirname, 'agents', file), 'utf8');
@@ -54,7 +69,7 @@ function spawnAgent(label, file, prompt) {
     '--system-prompt', system,
     '--dangerously-skip-permissions',
     '-p', prompt,
-  ], { cwd: __dirname, env: { ...process.env }, stdio: 'pipe' });
+  ], { cwd: __dirname, env: richEnv(), stdio: 'pipe' });
   child.stdout.on('data', d => process.stdout.write(`[${label}] ${d}`));
   child.stderr.on('data', d => process.stderr.write(`[${label}!] ${d}`));
   child.on('close', code => console.log(`[ALA scheduler] ${label} done (${code})`));
@@ -203,40 +218,56 @@ app.post('/api/command', (req, res) => {
   try { system = agentPrompt('backtest-agent.md'); }
   catch (e) { sseText('Error loading backtest agent: ' + e.message); return sseDone(); }
 
+  sseText(`Running ${cmd}...`);
+
   const child = spawn(CLAUDE_BIN, [
     '--print',
-    '--output-format', 'stream-json',
-    '--include-partial-messages',
+    '--output-format', 'text',
     '--system-prompt', system,
     '--dangerously-skip-permissions',
     '-p', command.trim(),
-  ], { cwd: __dirname, env: { ...process.env } });
+  ], { cwd: __dirname, env: richEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
 
-  let buf = '';
-  child.stdout.on('data', chunk => {
-    buf += chunk.toString();
-    const lines = buf.split('\n');
-    buf = lines.pop();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      try {
-        const ev = JSON.parse(line);
-        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text)
-          res.write(`data: ${JSON.stringify({ text: ev.delta.text })}\n\n`);
-      } catch {}
-    }
+  let output = '';
+  let errOutput = '';
+  child.stdout.on('data', chunk => { output += chunk.toString(); });
+  child.stderr.on('data', chunk => { errOutput += chunk.toString(); });
+
+  child.on('error', err => {
+    console.error('[command] spawn error:', err.message);
+    sseText('Agent error: ' + err.message);
+    sseDone();
   });
-  child.on('close', () => sseDone());
+
+  child.on('close', code => {
+    if (output.trim()) {
+      sseText(output.trim());
+    } else {
+      const detail = errOutput.trim() ? errOutput.trim().split('\n').pop() : `exit code ${code}`;
+      sseText(`[BACKTEST] Agent returned no output. ${detail}`);
+    }
+    sseDone();
+  });
+
+  // Kill child if client disconnects
+  res.on('close', () => { if (!child.killed) child.kill(); });
 });
 
 // POST /api/claude — stream a Claude response
 app.post('/api/claude', async (req, res) => {
   let apiKey;
-  try {
-    const cfg = JSON.parse(readFileSync(join(__dirname, 'electron', 'app-config.json'), 'utf8'));
-    apiKey = cfg.anthropicKey;
-  } catch {}
-  if (!apiKey) return res.status(400).json({ error: 'No Anthropic API key set in app-config.json' });
+  const configCandidates = [
+    process.env.ALA_USER_DATA && join(process.env.ALA_USER_DATA, 'app-config.json'),
+    join(__dirname, 'electron', 'app-config.json'),
+    join(__dirname, 'app-config.json'),
+  ].filter(Boolean);
+  for (const p of configCandidates) {
+    try {
+      const cfg = JSON.parse(readFileSync(p, 'utf8'));
+      if (cfg.anthropicKey) { apiKey = cfg.anthropicKey; break; }
+    } catch {}
+  }
+  if (!apiKey) return res.status(400).json({ error: 'No Anthropic API key — add anthropicKey to app-config.json' });
 
   const { messages } = req.body;
 

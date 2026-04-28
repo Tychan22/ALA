@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #060810;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    /* ── Header ── */
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+    .logo span { color: #22d3ee; }
+    .subtitle {
+      font-size: 11px;
+      color: #64748b;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    .setup-label {
+      font-size: 11px;
+      color: #475569;
+      margin-bottom: 28px;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Form ── */
+    .form {
+      -webkit-app-region: no-drag;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 290px;
+    }
+    .field-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: #64748b;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .field-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      outline: none;
+      letter-spacing: 1px;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #22d3ee; }
+    input::placeholder { color: #334155; font-family: inherit; letter-spacing: 0; }
+    button.primary {
+      margin-top: 4px;
+      padding: 10px;
+      background: rgba(34,211,238,0.15);
+      border: 1px solid rgba(34,211,238,0.3);
+      border-radius: 8px;
+      color: #22d3ee;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    button.primary:hover:not(:disabled) { background: rgba(34,211,238,0.25); }
+    button.primary:disabled { opacity: 0.4; cursor: default; }
+    .error {
+      font-size: 11px;
+      color: #f87171;
+      text-align: center;
+      min-height: 16px;
+    }
+
+    /* ── Loading panel ── */
+    #loading-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+    .spinner {
+      width: 36px;
+      height: 36px;
+      border: 3px solid rgba(34,211,238,0.15);
+      border-top-color: #22d3ee;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text {
+      font-size: 13px;
+      color: #64748b;
+      letter-spacing: 0.3px;
+    }
+    #status-text {
+      font-size: 11px;
+      color: #334155;
+      letter-spacing: 0.3px;
+    }
+
+    /* ── Chrome ── */
+    .quit {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: transparent;
+      border: none;
+      color: #334155;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .quit:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+    .version {
+      position: absolute;
+      bottom: 14px;
+      color: #1e293b;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <button class="quit" onclick="window.alaSetup.quit()">✕</button>
+
+  <!-- ── Setup form panel ── -->
+  <div id="setup-panel">
+    <div style="text-align:center">
+      <div class="logo"><span>ALA</span> Trader</div>
+      <div class="subtitle">AUTONOMOUS LEARNING AI</div>
+      <div class="setup-label">Enter your license key and Anthropic API key to activate</div>
+    </div>
+    <div class="form">
+      <div class="field-wrap">
+        <div class="field-label">License Key</div>
+        <input type="text" id="license-key" placeholder="YOURNAME-XXXX-XXXX-XXXX"
+          autocomplete="off" spellcheck="false"
+          oninput="this.value=this.value.toUpperCase()"
+          onkeydown="if(event.key==='Enter') document.getElementById('api-key').focus()"/>
+      </div>
+      <div class="field-wrap">
+        <div class="field-label">Anthropic API Key</div>
+        <input type="password" id="api-key" placeholder="sk-ant-api03-..."
+          autocomplete="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter') activate()"/>
+      </div>
+      <button class="primary" id="activate-btn" onclick="activate()">Activate ALA</button>
+      <div class="error" id="err"></div>
+    </div>
+  </div>
+
+  <!-- ── Loading panel (shown after activation / on re-launch) ── -->
+  <div id="loading-panel" hidden>
+    <div class="spinner"></div>
+    <div class="loading-text">Launching ALA Trader...</div>
+    <div id="status-text"></div>
+  </div>
+
+  <div class="version" id="ver"></div>
+
+  <script>
+    window.alaSetup.getVersion().then(v => {
+      document.getElementById('ver').textContent = 'v' + v;
+    });
+
+    // Set initial mode from URL hash (avoids flash on re-launch)
+    function applyMode(mode) {
+      if (mode === 'loading') {
+        document.getElementById('setup-panel').hidden = true;
+        document.getElementById('loading-panel').hidden = false;
+      }
+    }
+    applyMode(location.hash.replace('#', ''));
+
+    // Main process can also switch mode at runtime (after form submit)
+    window.alaSetup.onMode(mode => applyMode(mode));
+
+    window.alaSetup.onStatus(msg => {
+      document.getElementById('status-text').textContent = msg;
+    });
+
+    function showError(msg) {
+      const el = document.getElementById('err');
+      el.textContent = msg;
+      setTimeout(() => { el.textContent = ''; }, 3500);
+    }
+
+    async function activate() {
+      const licenseKey  = document.getElementById('license-key').value.trim().toUpperCase();
+      const anthropicKey = document.getElementById('api-key').value.trim();
+      const btn = document.getElementById('activate-btn');
+
+      if (!licenseKey) { showError('Please enter your license key.'); return; }
+      if (!anthropicKey) { showError('Please enter your Anthropic API key.'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Validating...';
+
+      const valid = await window.alaSetup.validateKey(licenseKey);
+      if (!valid) {
+        showError('Invalid license key. Please contact Tyler.');
+        btn.disabled = false;
+        btn.textContent = 'Activate ALA';
+        return;
+      }
+
+      if (!anthropicKey.startsWith('sk-ant-')) {
+        showError('API key should start with sk-ant- — check and try again.');
+        btn.disabled = false;
+        btn.textContent = 'Activate ALA';
+        return;
+      }
+
+      const result = await window.alaSetup.saveSetup({ licenseKey, anthropicKey });
+      if (!result.ok) {
+        showError(result.error || 'Activation failed.');
+        btn.disabled = false;
+        btn.textContent = 'Activate ALA';
+      }
+      // Main process handles the rest (mode switch + window open)
+    }
+  </script>
+</body>
+</html>
