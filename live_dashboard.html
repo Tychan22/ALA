@@ -639,6 +639,13 @@
       .learn-stats-row   { grid-template-columns: 1fr 1fr; }
     }
   </style>
+  <script>
+    // Remove Mac traffic-light gap on Windows
+    if (!navigator.userAgent.includes('Mac')) {
+      document.head.insertAdjacentHTML('beforeend',
+        '<style>.header { padding-left: 32px !important; }</style>');
+    }
+  </script>
 </head>
 <body>
 <canvas id="matrix-canvas"></canvas>
