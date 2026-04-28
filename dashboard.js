@@ -224,9 +224,10 @@ function isWeekday(d) { const w = d.getDay(); return w >= 1 && w <= 5; }
 function minsOf(d)    { return d.getHours() * 60 + d.getMinutes(); }
 
 const SCHED = {
-  mnq_signal:  { key: 'mnq_signal',  start: 9*60+45, end: 12*60,    interval: 3*60*1000,          file: 'signal-agent.md',   prompt: 'Run signal scan' },
-  mnq_monitor: { key: 'mnq_signal',  start: 9*60+30, end: 16*60,    interval: 5*60*1000,          file: 'trade-monitor.md',  prompt: 'Run trade monitor' },
-  learning:    { key: '_any',         start: 16*60+32, end: 16*60+37, interval: 23*60*60*1000,     file: 'learning-agent.md', prompt: 'Run learning agent' },
+  ilm_signal:  { key: 'mnq_signal',  start: 9*60+45, end: 12*60,    interval: 3*60*1000,      file: 'ilm-signal-agent.md', prompt: 'Run ILM signal scan' },
+  orb_signal:  { key: 'mnq_signal',  start: 9*60+45, end: 12*60,    interval: 3*60*1000,      file: 'orb-signal-agent.md', prompt: 'Run ORB signal scan' },
+  mnq_monitor: { key: 'mnq_signal',  start: 9*60+30, end: 16*60,    interval: 5*60*1000,      file: 'trade-monitor.md',    prompt: 'Run trade monitor' },
+  learning:    { key: '_any',        start: 16*60+32, end: 16*60+37, interval: 23*60*60*1000,  file: 'learning-agent.md',   prompt: 'Run learning agent' },
 };
 
 function spawnAgent(label, file, prompt) {
