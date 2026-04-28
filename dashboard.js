@@ -379,6 +379,24 @@ app.post('/api/command', (req, res) => {
   const sseText = t => res.write(`data: ${JSON.stringify({ text: t })}\n\n`);
   const sseDone = ()  => { res.write('data: [DONE]\n\n'); res.end(); };
 
+  // Agent toggles — mnq on/off, gold on/off
+  const agentMatch = cmd.match(/^(mnq|gold) (on|off)$/);
+  if (agentMatch) {
+    const [, agent, state] = agentMatch;
+    const key = agent === 'mnq' ? 'mnq_signal' : 'gold_signal';
+    const active = state === 'on';
+    try {
+      const rules = readRules();
+      if (!rules.agent_enabled) rules.agent_enabled = {};
+      rules.agent_enabled[key] = active;
+      writeFileSync(join(__dirname, 'rules.json'), JSON.stringify(rules, null, 2));
+      sseText(`${agent.toUpperCase()} agent ${active ? 'ON ✓ — will scan automatically during market hours.' : 'OFF — scanning paused.'}`);
+    } catch (e) {
+      sseText('Error updating rules: ' + e.message);
+    }
+    return sseDone();
+  }
+
   // Simple state toggles — no agent spawn needed
   if (cmd === 'backtest on' || cmd === 'backtest off') {
     const stateFile = join(__dirname, 'backtest_state.json');

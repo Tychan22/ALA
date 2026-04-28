@@ -2604,6 +2604,9 @@ setInterval(checkAgentStatus, 10000); // agent pulse check every 10s
       <div class="ct-row"><span class="ct-key">gold on / off</span><span class="ct-desc">Start / stop Gold pipeline crons</span></div>
       <div class="ct-row"><span class="ct-key">save</span><span class="ct-desc">Save TradingView layout</span></div>
       <div class="ct-row"><span class="ct-key">cleanse</span><span class="ct-desc">Clear all drawings from chart</span></div>
+      <div class="ct-section">Agents</div>
+      <div class="ct-row"><span class="ct-key">mnq on / off</span><span class="ct-desc">Enable / disable MNQ signal agent</span></div>
+      <div class="ct-row"><span class="ct-key">gold on / off</span><span class="ct-desc">Enable / disable Gold signal agent</span></div>
       <div class="ct-section">Backtest Session</div>
       <div class="ct-row"><span class="ct-key">backtest on / off</span><span class="ct-desc">Switch logging to / from backtest_log.csv</span></div>
       <div class="ct-row"><span class="ct-key">pic1</span><span class="ct-desc">Before screenshot — log open trade</span></div>
@@ -2729,7 +2732,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
   </div>
   <div id="ala-chat-messages">
     <div class="ala-msg assistant">
-      <div class="bubble">Hey! I'm ALA. I know your full trading setup — strategies, recent trades, P&amp;L, and agent status. Ask me anything, or type <code>pic1</code>, <code>pic2</code>, <code>cancel</code>, <code>backtest on/off</code>.</div>
+      <div class="bubble">Hey! I'm ALA. I know your full trading setup — strategies, recent trades, P&amp;L, and agent status. Ask me anything, or use commands: <code>pic1</code>, <code>pic2</code>, <code>cancel</code>, <code>backtest on/off</code>, <code>mnq on/off</code>, <code>gold on/off</code>.</div>
     </div>
   </div>
   <div id="ala-chat-input-row">
@@ -2749,7 +2752,7 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
   let _alaOpen = false;
   let _alaBusy = false;
 
-  const BACKTEST_CMD = /^(pic\s*[12]|cancel(?: trade)?|backtest (on|off))$/i;
+  const BACKTEST_CMD = /^(pic\s*[12]|cancel(?: trade)?|backtest (on|off)|mnq (on|off)|gold (on|off))$/i;
 
   function renderMd(text) {
     return text
