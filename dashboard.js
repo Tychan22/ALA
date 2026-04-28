@@ -5,6 +5,13 @@ import { dirname, join } from 'path';
 import { spawn } from 'child_process';
 import { platform } from 'os';
 
+// ─── TradingView CDP core — direct access, no subprocess needed ───────────────
+import { captureScreenshot }                                       from './src/core/capture.js';
+import { getState }                                                from './src/core/chart.js';
+import { getOhlcv, getStudyValues, getPineLines,
+         getPineLabels, getPineTables, getQuote }                   from './src/core/data.js';
+import { drawShape }                                               from './src/core/drawing.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 
@@ -42,6 +49,110 @@ function agentPrompt(file) {
 
 function readRules() {
   try { return JSON.parse(readFileSync(join(__dirname, 'rules.json'), 'utf8')); } catch { return {}; }
+}
+
+// ─── Anthropic API key ────────────────────────────────────────────────────────
+function getApiKey() {
+  const candidates = [
+    process.env.ALA_USER_DATA && join(process.env.ALA_USER_DATA, 'app-config.json'),
+    join(__dirname, 'electron', 'app-config.json'),
+    join(__dirname, 'app-config.json'),
+  ].filter(Boolean);
+  for (const p of candidates) {
+    try { const c = JSON.parse(readFileSync(p, 'utf8')); if (c.anthropicKey) return c.anthropicKey; } catch {}
+  }
+  return null;
+}
+
+// ─── TradingView tool definitions for Anthropic tool_use ─────────────────────
+const TV_TOOLS = [
+  { name: 'capture_screenshot', description: 'Take a screenshot of the TradingView chart.',
+    input_schema: { type: 'object', properties: {
+      region:   { type: 'string', description: 'full | chart | strategy_tester' },
+      filename: { type: 'string', description: 'Optional filename without extension' },
+    }}},
+  { name: 'chart_get_state', description: 'Get current symbol, timeframe, chart type, and all indicator names/IDs.',
+    input_schema: { type: 'object', properties: {} }},
+  { name: 'data_get_ohlcv', description: 'Get OHLCV price bars. Always use summary:true unless you need individual bars.',
+    input_schema: { type: 'object', properties: {
+      count:   { type: 'number' },
+      summary: { type: 'boolean' },
+    }}},
+  { name: 'data_get_study_values', description: 'Get current numeric values from all visible indicators (RSI, MACD, EMA, BB, etc.)',
+    input_schema: { type: 'object', properties: {} }},
+  { name: 'data_get_pine_lines', description: 'Get horizontal price levels from custom Pine indicators.',
+    input_schema: { type: 'object', properties: {
+      study_filter: { type: 'string', description: 'Filter by indicator name substring' },
+    }}},
+  { name: 'data_get_pine_labels', description: 'Get labeled price levels from Pine indicators (PDH, Bias, session levels, etc.)',
+    input_schema: { type: 'object', properties: {
+      study_filter: { type: 'string' },
+      max_labels:   { type: 'number' },
+    }}},
+  { name: 'data_get_pine_tables', description: 'Get table data from Pine indicators.',
+    input_schema: { type: 'object', properties: {
+      study_filter: { type: 'string' },
+    }}},
+  { name: 'quote_get', description: 'Get real-time price snapshot for the current chart symbol.',
+    input_schema: { type: 'object', properties: {} }},
+  { name: 'draw_shape', description: 'Draw on the chart: horizontal_line, trend_line, rectangle, or text.',
+    input_schema: { type: 'object',
+      required: ['shape', 'point'],
+      properties: {
+        shape:     { type: 'string' },
+        point:     { type: 'object', description: '{ price, time }' },
+        point2:    { type: 'object', description: 'Second point for lines/rectangles' },
+        text:      { type: 'string' },
+        overrides: { type: 'object' },
+      }}},
+];
+
+async function executeTVTool(name, input) {
+  try {
+    switch (name) {
+      case 'capture_screenshot':    return await captureScreenshot(input);
+      case 'chart_get_state':       return await getState();
+      case 'data_get_ohlcv':        return await getOhlcv(input);
+      case 'data_get_study_values': return await getStudyValues();
+      case 'data_get_pine_lines':   return await getPineLines(input);
+      case 'data_get_pine_labels':  return await getPineLabels(input);
+      case 'data_get_pine_tables':  return await getPineTables(input);
+      case 'quote_get':             return await getQuote(input);
+      case 'draw_shape':            return await drawShape(input);
+      default: return { success: false, error: `Unknown tool: ${name}` };
+    }
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// Non-streaming agentic loop — for /api/command
+async function runAgent({ system, userMsg, apiKey, sseText }) {
+  let messages = [{ role: 'user', content: userMsg }];
+  for (let turn = 0; turn < 8; turn++) {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-opus-4-7', max_tokens: 4096, system, tools: TV_TOOLS, messages }),
+    });
+    const result = await resp.json();
+    if (!resp.ok) { sseText('API error: ' + (result.error?.message || JSON.stringify(result))); return; }
+
+    for (const block of result.content) {
+      if (block.type === 'text' && block.text.trim()) sseText(block.text);
+    }
+    if (result.stop_reason !== 'tool_use') return;
+
+    const toolResults = [];
+    for (const block of result.content) {
+      if (block.type !== 'tool_use') continue;
+      sseText(`*[${block.name}...]*`);
+      const out = await executeTVTool(block.name, block.input);
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
+    }
+    messages = [...messages, { role: 'assistant', content: result.content }, { role: 'user', content: toolResults }];
+  }
+  sseText('[Max turns reached]');
 }
 
 // ─── Autonomous scheduler ──────────────────────────────────────────────────────
@@ -230,59 +341,21 @@ app.post('/api/command', (req, res) => {
     return sseDone();
   }
 
+  const apiKey = getApiKey();
+  if (!apiKey) { sseText('No Anthropic API key configured.'); return sseDone(); }
+
   let system;
   try { system = agentPrompt('backtest-agent.md'); }
   catch (e) { sseText('Error loading backtest agent: ' + e.message); return sseDone(); }
 
-  sseText(`Running ${cmd}...`);
-
-  const child = spawn(CLAUDE_BIN, [
-    '--print',
-    '--output-format', 'text',
-    '--system-prompt', system,
-    '--dangerously-skip-permissions',
-    '-p', command.trim(),
-  ], { cwd: __dirname, env: richEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
-
-  let output = '';
-  let errOutput = '';
-  child.stdout.on('data', chunk => { output += chunk.toString(); });
-  child.stderr.on('data', chunk => { errOutput += chunk.toString(); });
-
-  child.on('error', err => {
-    console.error('[command] spawn error:', err.message);
-    sseText('Agent error: ' + err.message);
-    sseDone();
-  });
-
-  child.on('close', code => {
-    if (output.trim()) {
-      sseText(output.trim());
-    } else {
-      const detail = errOutput.trim() ? errOutput.trim().split('\n').pop() : `exit code ${code}`;
-      sseText(`[BACKTEST] Agent returned no output. ${detail}`);
-    }
-    sseDone();
-  });
-
-  // Kill child if client disconnects
-  res.on('close', () => { if (!child.killed) child.kill(); });
+  runAgent({ system, userMsg: command.trim(), apiKey, sseText })
+    .then(sseDone)
+    .catch(e => { sseText('Agent error: ' + e.message); sseDone(); });
 });
 
-// POST /api/claude — stream a Claude response
+// POST /api/claude — stream a Claude response (with TradingView tool_use)
 app.post('/api/claude', async (req, res) => {
-  let apiKey;
-  const configCandidates = [
-    process.env.ALA_USER_DATA && join(process.env.ALA_USER_DATA, 'app-config.json'),
-    join(__dirname, 'electron', 'app-config.json'),
-    join(__dirname, 'app-config.json'),
-  ].filter(Boolean);
-  for (const p of configCandidates) {
-    try {
-      const cfg = JSON.parse(readFileSync(p, 'utf8'));
-      if (cfg.anthropicKey) { apiKey = cfg.anthropicKey; break; }
-    } catch {}
-  }
+  const apiKey = getApiKey();
   if (!apiKey) return res.status(400).json({ error: 'No Anthropic API key — add anthropicKey to app-config.json' });
 
   const { messages } = req.body;
@@ -325,36 +398,74 @@ app.post('/api/claude', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   try {
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-opus-4-7', max_tokens: 2048, stream: true, system, messages }),
-    });
+    for (let turn = 0; turn < 5; turn++) {
+      const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: 'claude-opus-4-7', max_tokens: 2048, stream: true, system, tools: TV_TOOLS, messages }),
+      });
 
-    if (!upstream.ok) {
-      const err = await upstream.text();
-      res.write(`data: ${JSON.stringify({ error: err })}\n\n`);
-      return res.end();
-    }
-
-    const reader = upstream.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n'); buf = lines.pop();
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const d = line.slice(6);
-        if (d === '[DONE]') continue;
-        try {
-          const p = JSON.parse(d);
-          if (p.type === 'content_block_delta' && p.delta?.text)
-            res.write(`data: ${JSON.stringify({ text: p.delta.text })}\n\n`);
-        } catch {}
+      if (!upstream.ok) {
+        const err = await upstream.text();
+        res.write(`data: ${JSON.stringify({ error: err })}\n\n`);
+        break;
       }
+
+      // Stream response and accumulate blocks for tool_use detection
+      const reader = upstream.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let stopReason = null;
+      const assistantContent = [];
+      let activeBlock = null;
+      let toolInputBuf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const d = line.slice(6).trim();
+          if (!d || d === '[DONE]') continue;
+          try {
+            const p = JSON.parse(d);
+            if (p.type === 'content_block_start') {
+              activeBlock = { ...p.content_block };
+              if (activeBlock.type === 'text') activeBlock.text = '';
+              if (activeBlock.type === 'tool_use') { toolInputBuf = ''; activeBlock.input = {}; }
+            } else if (p.type === 'content_block_delta') {
+              if (p.delta.type === 'text_delta') {
+                res.write(`data: ${JSON.stringify({ text: p.delta.text })}\n\n`);
+                if (activeBlock?.type === 'text') activeBlock.text += p.delta.text;
+              } else if (p.delta.type === 'input_json_delta') {
+                toolInputBuf += p.delta.partial_json;
+              }
+            } else if (p.type === 'content_block_stop') {
+              if (activeBlock?.type === 'tool_use') {
+                try { activeBlock.input = JSON.parse(toolInputBuf); } catch {}
+              }
+              if (activeBlock) assistantContent.push({ ...activeBlock });
+              activeBlock = null; toolInputBuf = '';
+            } else if (p.type === 'message_delta') {
+              stopReason = p.delta?.stop_reason;
+            }
+          } catch {}
+        }
+      }
+
+      if (stopReason !== 'tool_use') break;
+
+      // Execute tools, then loop for follow-up response
+      const toolResults = [];
+      for (const block of assistantContent) {
+        if (block.type !== 'tool_use') continue;
+        res.write(`data: ${JSON.stringify({ text: `\n*[${block.name}...]*\n` })}\n\n`);
+        const out = await executeTVTool(block.name, block.input);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
+      }
+      messages = [...messages, { role: 'assistant', content: assistantContent }, { role: 'user', content: toolResults }];
     }
   } catch (e) {
     res.write(`data: ${JSON.stringify({ error: e.message })}\n\n`);
