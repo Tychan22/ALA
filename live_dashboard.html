@@ -2650,6 +2650,14 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
 // ── CHANGELOG ────────────────────────────────────────────────────────────
 const CHANGELOG = [
   {
+    version: 'v1.2.16', date: 'Apr 29 2026', badge: 'fix',
+    items: [
+      'ALA chat: API errors now display instead of silently showing blank',
+      'ALA chat: typing indicator removed properly after tool calls finish',
+      'ALA chat: fallback "(no response)" shown if Claude returns nothing',
+    ]
+  },
+  {
     version: 'v1.2.15', date: 'Apr 29 2026', badge: 'fix',
     items: [
       'Critical fix: scheduled agents (ILM/ORB) no longer spawn a subprocess — they run inside dashboard.js using the same CDP connection, stopping the TV disconnect on every scan',
@@ -2977,11 +2985,20 @@ function closeChangelogModal(){ document.getElementById('changelog-overlay').cla
           if (data === '[DONE]') continue;
           try {
             const parsed = JSON.parse(data);
-            if (parsed.text) { fullText += parsed.text; bubble.innerHTML = renderMd(fullText); alaScroll(); }
+            if (parsed.text) {
+              if (typing.parentNode) typing.remove();
+              fullText += parsed.text; bubble.innerHTML = renderMd(fullText); alaScroll();
+            } else if (parsed.error) {
+              if (typing.parentNode) typing.remove();
+              fullText += '\n⚠ ' + parsed.error;
+              bubble.innerHTML = renderMd(fullText); alaScroll();
+            }
           } catch {}
         }
       }
 
+      if (typing.parentNode) typing.remove();
+      if (!fullText.trim() && !isCmd) { bubble.innerHTML = renderMd('*(no response)*'); }
       if (!isCmd) _alaMessages.push({ role: 'assistant', content: fullText });
 
     } catch (e) {
