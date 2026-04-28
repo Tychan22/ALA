@@ -5,9 +5,10 @@ on:
     branches: [main]
     paths:
       - 'electron/package.json'
+  workflow_dispatch:
 
 jobs:
-  release:
+  release-win:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,3 +29,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: npm run release:win
+
+  release-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install electron dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build & publish Mac DMG
+        working-directory: electron
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run release:mac
