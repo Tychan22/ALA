@@ -1,6 +1,6 @@
 {
   "name": "ala-trader",
-  "version": "1.2.13",
+  "version": "1.2.14",
   "description": "ALA Trader — Autonomous Learning AI",
   "main": "main.js",
   "scripts": {
@@ -9,6 +9,7 @@
     "build:win": "node prebuild.js && electron-builder --win && node postbuild.js",
     "build:all": "node prebuild.js && electron-builder --mac --win && node postbuild.js",
     "release:win": "node prebuild.js && electron-builder --win --publish always && node postbuild.js",
+    "release:mac": "node prebuild.js && electron-builder --mac --publish always && node postbuild.js",
     "release:all": "node prebuild.js && electron-builder --mac --win --publish always && node postbuild.js"
   },
   "build": {
