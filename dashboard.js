@@ -9,8 +9,8 @@ import { platform } from 'os';
 import { captureScreenshot }                                       from './src/core/capture.js';
 import { getState }                                                from './src/core/chart.js';
 import { getOhlcv, getStudyValues, getPineLines,
-         getPineLabels, getPineTables, getQuote }                   from './src/core/data.js';
-import { drawShape }                                               from './src/core/drawing.js';
+         getPineLabels, getPineTables, getPineBoxes, getQuote }    from './src/core/data.js';
+import { drawShape, listDrawings, getProperties }                  from './src/core/drawing.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -105,25 +105,63 @@ const TV_TOOLS = [
         text:      { type: 'string' },
         overrides: { type: 'object' },
       }}},
+  { name: 'draw_list', description: 'List all shapes/lines drawn on the chart. Use this to find entry, SL, TP lines and any drawn boxes.',
+    input_schema: { type: 'object', properties: {} }},
+  { name: 'draw_get_properties', description: 'Get full properties of a specific drawing by entity_id.',
+    input_schema: { type: 'object', required: ['entity_id'],
+      properties: { entity_id: { type: 'string' } }}},
+  { name: 'data_get_pine_boxes', description: 'Get price zone boxes drawn by Pine indicators (supply/demand zones, SHORT BOX, LONG BOX, etc.)',
+    input_schema: { type: 'object', properties: {
+      study_filter: { type: 'string', description: 'Filter by indicator name substring' },
+    }}},
 ];
 
 async function executeTVTool(name, input) {
   try {
     switch (name) {
-      case 'capture_screenshot':    return await captureScreenshot(input);
+      case 'capture_screenshot': {
+        const result = await captureScreenshot(input);
+        // Include image as base64 so Claude can visually analyze the chart
+        if (result.success && result.file_path) {
+          try {
+            const { readFileSync: rfs } = await import('fs');
+            result._imageBase64 = rfs(result.file_path).toString('base64');
+          } catch {}
+        }
+        return result;
+      }
       case 'chart_get_state':       return await getState();
       case 'data_get_ohlcv':        return await getOhlcv(input);
       case 'data_get_study_values': return await getStudyValues();
       case 'data_get_pine_lines':   return await getPineLines(input);
       case 'data_get_pine_labels':  return await getPineLabels(input);
       case 'data_get_pine_tables':  return await getPineTables(input);
+      case 'data_get_pine_boxes':   return await getPineBoxes(input);
       case 'quote_get':             return await getQuote(input);
       case 'draw_shape':            return await drawShape(input);
+      case 'draw_list':             return await listDrawings();
+      case 'draw_get_properties':   return await getProperties(input);
       default: return { success: false, error: `Unknown tool: ${name}` };
     }
   } catch (e) {
     return { success: false, error: e.message };
   }
+}
+
+// Build tool_result content — includes image block if screenshot returned image data
+function buildToolResult(toolUseId, result) {
+  const { _imageBase64, ...rest } = result;
+  if (_imageBase64) {
+    return {
+      type: 'tool_result',
+      tool_use_id: toolUseId,
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: _imageBase64 } },
+        { type: 'text', text: JSON.stringify(rest) },
+      ],
+    };
+  }
+  return { type: 'tool_result', tool_use_id: toolUseId, content: JSON.stringify(result) };
 }
 
 // Non-streaming agentic loop — for /api/command
@@ -148,7 +186,7 @@ async function runAgent({ system, userMsg, apiKey, sseText }) {
       if (block.type !== 'tool_use') continue;
       sseText(`*[${block.name}...]*`);
       const out = await executeTVTool(block.name, block.input);
-      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
+      toolResults.push(buildToolResult(block.id, out));
     }
     messages = [...messages, { role: 'assistant', content: result.content }, { role: 'user', content: toolResults }];
   }
@@ -463,7 +501,7 @@ app.post('/api/claude', async (req, res) => {
         if (block.type !== 'tool_use') continue;
         res.write(`data: ${JSON.stringify({ text: `\n*[${block.name}...]*\n` })}\n\n`);
         const out = await executeTVTool(block.name, block.input);
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(out) });
+        toolResults.push(buildToolResult(block.id, out));
       }
       messages = [...messages, { role: 'assistant', content: assistantContent }, { role: 'user', content: toolResults }];
     }
