@@ -230,20 +230,19 @@ const SCHED = {
   learning:    { key: '_any',        start: 16*60+32, end: 16*60+37, interval: 23*60*60*1000,  file: 'learning-agent.md',   prompt: 'Run learning agent' },
 };
 
-function spawnAgent(label, file, prompt) {
+async function runScheduledAgent(label, file, prompt) {
   let system;
   try { system = agentPrompt(file); } catch (e) { console.error(`[scheduler] cannot read ${file}:`, e.message); return; }
+  const apiKey = getApiKey();
+  if (!apiKey) { console.error(`[scheduler] no API key`); return; }
   console.log(`[ALA scheduler] → ${label}`);
   agentLastRun[label] = Date.now();
-  const child = spawn(CLAUDE_BIN, [
-    '--print', '--output-format', 'text',
-    '--system-prompt', system,
-    '--dangerously-skip-permissions',
-    '-p', prompt,
-  ], { cwd: __dirname, env: richEnv(), stdio: 'pipe' });
-  child.stdout.on('data', d => process.stdout.write(`[${label}] ${d}`));
-  child.stderr.on('data', d => process.stderr.write(`[${label}!] ${d}`));
-  child.on('close', code => console.log(`[ALA scheduler] ${label} done (${code})`));
+  try {
+    await runAgent({ system, userMsg: prompt, apiKey, sseText: txt => console.log(`[${label}] ${txt}`) });
+    console.log(`[ALA scheduler] ${label} done`);
+  } catch (e) {
+    console.error(`[ALA scheduler] ${label} error:`, e.message);
+  }
 }
 
 function tickScheduler() {
@@ -258,7 +257,7 @@ function tickScheduler() {
     const on = cfg.key === '_any' ? (enabled.mnq_signal || enabled.gold_signal) : enabled[cfg.key];
     if (!on) continue;
     if (now - (agentLastRun[label] || 0) < cfg.interval) continue;
-    spawnAgent(label, cfg.file, cfg.prompt);
+    runScheduledAgent(label, cfg.file, cfg.prompt);
   }
 }
 

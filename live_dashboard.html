@@ -2650,6 +2650,12 @@ function closeCmdModal(){ document.getElementById('cmd-modal-overlay').classList
 // ── CHANGELOG ────────────────────────────────────────────────────────────
 const CHANGELOG = [
   {
+    version: 'v1.2.15', date: 'Apr 29 2026', badge: 'fix',
+    items: [
+      'Critical fix: scheduled agents (ILM/ORB) no longer spawn a subprocess — they run inside dashboard.js using the same CDP connection, stopping the TV disconnect on every scan',
+    ]
+  },
+  {
     version: 'v1.2.14', date: 'Apr 28 2026', badge: 'fix',
     items: [
       'Mac DMG build fixed — release:mac script was missing, CI was silently failing',
