@@ -1,7 +1,7 @@
 ---
 name: ilm-signal-agent
 description: ILM/iFVG signal scanner for MNQ. Detects liquidity sweeps of key levels (PDH, PDL, session H/L), waits for a Fair Value Gap to form and invert (iFVG), then trades the reversal. EMA Cloud + Premium/Discount + ATR filters. 2.5R target with 2.0R partial.
-model: sonnet
+model: haiku
 tools:
   - "*"
 ---
@@ -14,24 +14,11 @@ You run silently. Output only on signal or block.
 
 ---
 
-## Step 0 — Enabled Check
+## Step 0 — Load Config + Enabled Check
 
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Check `agent_enabled.mnq_signal`.
+Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json` once. Extract:
 
-If `false` → abort immediately:
-`[ILM AGENT] Disabled.`
-
----
-
-## Step 0b — Heartbeat
-
-Read `/Users/tylerbittel/tradingview-mcp-jackson/agent_status.json`. Set `ilm_signal_agent` to current UTC timestamp (ISO 8601). Write back. This powers the dashboard active indicator.
-
----
-
-## Step 1 — Load Config
-
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Extract:
+- `agent_enabled.mnq_signal` — if `false` → abort immediately: `[ILM AGENT] Disabled.`
 
 - `ilm.symbol` — chart symbol
 - `ilm.timeframe` — "5"
@@ -41,6 +28,12 @@ Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Extract:
 - `ilm.sweep_levels.external` — ["PDH","PDL","AS.H","AS.L","LO.H","LO.L"]
 - `ilm.filters` — premium_discount, ema_cloud rules
 - `alerts.discord_webhook`
+
+---
+
+## Step 0b — Heartbeat
+
+Read `/Users/tylerbittel/tradingview-mcp-jackson/agent_status.json`. Set `ilm_signal_agent` to current UTC timestamp (ISO 8601). Write back.
 
 ---
 

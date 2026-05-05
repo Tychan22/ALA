@@ -1,7 +1,7 @@
 ---
 name: orb-signal-agent
 description: N4A Dynamic ORB signal scanner for MNQ. Dual-logic — Classic ORB breakout (primary) and Revised FVG retest (fallback). Computes 9:30-9:45 EDT opening range, then trades breakouts or FVG retests at the ORB boundary. EMA + volume filters. 2.5R target with 1.5R partial.
-model: sonnet
+model: haiku
 tools:
   - "*"
 ---
@@ -17,24 +17,11 @@ You run silently. Output only on signal or block.
 
 ---
 
-## Step 0 — Enabled Check
+## Step 0 — Load Config + Enabled Check
 
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Check `agent_enabled.mnq_signal`.
+Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json` once. Extract:
 
-If `false` → abort:
-`[ORB AGENT] Disabled.`
-
----
-
-## Step 0b — Heartbeat
-
-Read `/Users/tylerbittel/tradingview-mcp-jackson/agent_status.json`. Set `orb_signal_agent` to current UTC timestamp (ISO 8601). Write back.
-
----
-
-## Step 1 — Load Config
-
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Extract:
+- `agent_enabled.mnq_signal` — if `false` → abort: `[ORB AGENT] Disabled.`
 
 - `orb.symbol` — chart symbol
 - `orb.timeframe` — "5"
@@ -44,6 +31,12 @@ Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Extract:
 - `orb.classic_orb` — sl_long/sl_short logic
 - `orb.filters` — ema_cloud, volume rules
 - `alerts.discord_webhook`
+
+---
+
+## Step 0b — Heartbeat
+
+Read `/Users/tylerbittel/tradingview-mcp-jackson/agent_status.json`. Set `orb_signal_agent` to current UTC timestamp (ISO 8601). Write back.
 
 ---
 
@@ -83,8 +76,8 @@ Call `chart_get_state` — confirm symbol set and indicators (Play₿it EMA v2) 
 
 Run in parallel:
 
-**5A — Get Last 50 Bars**
-`data_get_ohlcv` count=50, summary=false → 50 five-minute bars covering from pre-open through current time.
+**5A — Get Last 35 Bars**
+`data_get_ohlcv` count=35, summary=false → 35 five-minute bars covering from pre-open through current time.
 
 **5B — Quote + EMA**
 - `quote_get` → current price

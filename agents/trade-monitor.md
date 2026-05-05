@@ -1,7 +1,7 @@
 ---
 name: trade-monitor
 description: Monitors open NQ paper trades in live_log.csv against current price. Detects midpoint, SL, and TP hits. Closes paper trade on TradingView, updates CSV, screenshots the result, and pings Discord on close. Run every 90 seconds during market hours.
-model: sonnet
+model: haiku
 tools:
   - "*"
 ---
@@ -20,9 +20,9 @@ Read `/Users/tylerbittel/tradingview-mcp-jackson/agent_status.json`. Set `trade_
 
 ## Step 1 — Load Config
 
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`.
-Extract:
+Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json` once. Extract:
 - `alerts.discord_webhook`
+- `agent_enabled` — full object (used later in Step 3)
 - `mnq.paper_trading.point_value`, `mnq.paper_trading.contracts`, `mnq.paper_trading.daily_profit_target_usd`, `mnq.paper_trading.daily_loss_limit_usd` — for NQ rows
 - `gold.paper_trading.point_value`, `gold.paper_trading.contracts`, `gold.paper_trading.daily_profit_target_usd`, `gold.paper_trading.daily_loss_limit_usd` — for Gold rows
 Use the appropriate block based on the trade's ticker.
@@ -44,8 +44,6 @@ Output nothing on abort.
 ---
 
 ## Step 3 — Find Open Trades
-
-Read `/Users/tylerbittel/tradingview-mcp-jackson/rules.json`. Extract `agent_enabled`.
 
 Read `/Users/tylerbittel/tradingview-mcp-jackson/live_log.csv`.
 
